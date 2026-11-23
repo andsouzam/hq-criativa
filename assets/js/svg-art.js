@@ -14,10 +14,42 @@
       .replace(/"/g, "&quot;");
   }
 
-  function wrapLines(text, maxLineWidth, fontSize) {
+  const BUBBLE_FONTS = [
+    {
+      id: "comic",
+      name: "Quadrinhos (Comic)",
+      css: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, sans-serif",
+      sampleCss: '"Comic Sans MS", cursive, sans-serif',
+    },
+    {
+      id: "sans",
+      name: "Sans-serif limpa",
+      css: "'Segoe UI', system-ui, -apple-system, Arial, sans-serif",
+      sampleCss: '"Segoe UI", system-ui, sans-serif',
+    },
+    {
+      id: "hand",
+      name: "Manuscrita",
+      css: "'Segoe Script', 'Bradley Hand', 'Brush Script MT', cursive",
+      sampleCss: '"Segoe Script", "Brush Script MT", cursive',
+    },
+    {
+      id: "mono",
+      name: "Digital / Código",
+      css: "ui-monospace, 'Cascadia Code', Consolas, 'Courier New', monospace",
+      sampleCss: 'Consolas, "Courier New", monospace',
+    },
+  ];
+
+  function resolveBubbleFont(fontId) {
+    return BUBBLE_FONTS.find((f) => f.id === fontId) || BUBBLE_FONTS[1];
+  }
+
+  function wrapLines(text, maxLineWidth, fontSize, fontFamilyId) {
     const raw = String(text || "").trim() || "...";
     const paragraphs = raw.split(/\r?\n/);
-    const fontSpec = `600 ${fontSize}px "Segoe UI", system-ui, -apple-system, Arial, sans-serif`;
+    const fontMeta = resolveBubbleFont(fontFamilyId);
+    const fontSpec = `600 ${fontSize}px ${fontMeta.css}`;
     if (measureCtx) measureCtx.font = fontSpec;
 
     const lines = [];
@@ -61,7 +93,7 @@
     for (const l of lines) {
       widthUsed = Math.max(widthUsed, estWidth(l));
     }
-    return { lines, widthUsed };
+    return { lines, widthUsed, fontCss: fontMeta.css };
   }
 
   // ---------------------------------------------------------------------------
@@ -78,6 +110,8 @@
       skinColor: "#B5744B",
       hairColor: "#1E1B18",
       hairStyle: "puffs",
+      outfitStyle: "casual",
+      bottomStyle: "skirt",
       outfitColor: "#C84B31",
       pantsColor: "#1E3A5F",
       defaultAccessories: { glasses: false, hat: false, necklace: false, watch: false },
@@ -90,6 +124,8 @@
       skinColor: "#F0B892",
       hairColor: "#1E1B18",
       hairStyle: "short",
+      outfitStyle: "hoodie",
+      bottomStyle: "pants",
       outfitColor: "#2563EB",
       pantsColor: "#1F2937",
       defaultAccessories: { glasses: false, hat: false, necklace: false, watch: false },
@@ -102,6 +138,8 @@
       skinColor: "#E6AE86",
       hairColor: "#5C3A21",
       hairStyle: "bun",
+      outfitStyle: "coat",
+      bottomStyle: "pants",
       outfitColor: "#102542",
       pantsColor: "#334155",
       defaultAccessories: { glasses: true, hat: false, necklace: false, watch: true },
@@ -114,6 +152,8 @@
       skinColor: "#D4956A",
       hairColor: "#1E1B18",
       hairStyle: "long",
+      outfitStyle: "casual",
+      bottomStyle: "pants",
       outfitColor: "#0F766E",
       pantsColor: "#1E293B",
       defaultAccessories: { glasses: false, hat: false, necklace: true, watch: false },
@@ -126,6 +166,8 @@
       skinColor: "#EBBFA4",
       hairColor: "#CBD5E1",
       hairStyle: "bun",
+      outfitStyle: "coat",
+      bottomStyle: "pants",
       outfitColor: "#0F766E",
       pantsColor: "#475569",
       defaultAccessories: { glasses: true, hat: false, necklace: true, watch: false },
@@ -138,6 +180,8 @@
       skinColor: "#E8B490",
       hairColor: "#5C3A21",
       hairStyle: "short",
+      outfitStyle: "coat",
+      bottomStyle: "pants",
       outfitColor: "#B6935E",
       pantsColor: "#3B2818",
       defaultAccessories: { glasses: false, hat: true, necklace: false, watch: true },
@@ -271,6 +315,28 @@
     { id: "#0F766E", name: "Verde" },
     { id: "#D97706", name: "Mostarda" },
     { id: "#9F1239", name: "Vinho" },
+  ];
+
+  const OUTFIT_STYLES = [
+    { id: "casual", name: "Camiseta casual" },
+    { id: "coat", name: "Camisa / Jaleco" },
+    { id: "hoodie", name: "Moletom / Casaco" },
+    { id: "dress", name: "Vestido" },
+    { id: "uniform", name: "Uniforme escolar" },
+  ];
+
+  const BOTTOM_STYLES = [
+    { id: "pants", name: "Calça" },
+    { id: "skirt", name: "Saia" },
+  ];
+
+  const BOTTOM_COLORS = [
+    { id: "#1E3A5F", name: "Jeans azul" },
+    { id: "#1F2937", name: "Preto" },
+    { id: "#475569", name: "Cinza" },
+    { id: "#3B2818", name: "Marrom" },
+    { id: "#C84B31", name: "Terracota" },
+    { id: "#0F766E", name: "Verde escuro" },
   ];
 
   const ACCESSORY_LIST = [
@@ -512,13 +578,18 @@
     return arms + watchMarkup;
   }
 
-  function renderHumanLegsFull(pose, pantsColor, isSkirt) {
+  function renderHumanLegsFull(pose, bottomColor, skirtFill, showSkirtOrDress) {
     if (pose === "sitting") {
       return `
         <!-- Coxas horizontais + pernas dobradas -->
-        <rect x="-26" y="48" width="58" height="20" rx="8" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
-        <rect x="20" y="54" width="20" height="58" rx="6" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
-        <rect x="-12" y="58" width="20" height="54" rx="6" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
+        <rect x="-26" y="48" width="58" height="20" rx="8" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
+        <rect x="20" y="54" width="20" height="58" rx="6" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
+        <rect x="-12" y="58" width="20" height="54" rx="6" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
+        ${
+          showSkirtOrDress
+            ? `<path d="M-30 46 L26 46 Q36 46 38 69 L-28 69 Z" fill="${skirtFill}" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/>`
+            : ""
+        }
         <!-- Sapatos -->
         <path d="M-14 108 H12 Q18 108 18 118 H-14 Z" fill="#1F2937" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
         <path d="M18 108 H46 Q52 108 52 118 H18 Z" fill="#1F2937" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
@@ -527,21 +598,29 @@
     if (pose === "walking") {
       return `
         <g transform="translate(-12 50) rotate(18)">
-          <rect x="-11" y="0" width="22" height="68" rx="6" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
+          <rect x="-11" y="0" width="22" height="68" rx="6" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
           <path d="M-12 64 H14 Q20 64 20 75 H-12 Z" fill="#1F2937" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
         </g>
         <g transform="translate(12 50) rotate(-18)">
-          <rect x="-11" y="0" width="22" height="68" rx="6" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
+          <rect x="-11" y="0" width="22" height="68" rx="6" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
           <path d="M-12 64 H16 Q22 64 22 75 H-12 Z" fill="#1F2937" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
         </g>
-        ${isSkirt ? `<path d="M-30 48 L30 48 L36 74 L-36 74 Z" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>` : ""}
+        ${
+          showSkirtOrDress
+            ? `<path d="M-30 48 L30 48 L38 78 L-38 78 Z" fill="${skirtFill}" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/>`
+            : ""
+        }
       `;
     }
     // standing / holding / typing / pointing -> Corpo inteiro ereto
     return `
-      <rect x="-25" y="50" width="21" height="72" rx="5" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
-      <rect x="4" y="50" width="21" height="72" rx="5" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>
-      ${isSkirt ? `<path d="M-30 48 L30 48 L35 76 L-35 76 Z" fill="${pantsColor}" stroke="${INK}" stroke-width="2.3"/>` : ""}
+      <rect x="-25" y="50" width="21" height="72" rx="5" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
+      <rect x="4" y="50" width="21" height="72" rx="5" fill="${bottomColor}" stroke="${INK}" stroke-width="2.3"/>
+      ${
+        showSkirtOrDress
+          ? `<path d="M-30 48 L30 48 L37 80 L-37 80 Z" fill="${skirtFill}" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/>`
+          : ""
+      }
       <!-- Sapatos / Tênis -->
       <path d="M-28 118 H-2 Q3 118 3 130 H-28 Z" fill="#1F2937" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
       <path d="M2 118 H28 Q33 118 33 130 H2 Z" fill="#1F2937" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
@@ -550,57 +629,95 @@
     `;
   }
 
+  function renderHumanOutfitTorsoAndDetails(outfitStyle, outfit, itemId) {
+    let torsoDetail = "";
+    let backHood = "";
+
+    if (outfitStyle === "coat") {
+      if (itemId === "detective") {
+        torsoDetail = `
+          <polygon points="-13,-14 0,14 13,-14" fill="#FFFFFF" stroke="${INK}" stroke-width="1.8"/>
+          <polygon points="-3,-6 3,-6 4.5,20 0,25 -4.5,20" fill="#C84B31" stroke="${INK}" stroke-width="1.4"/>
+          <rect x="-32" y="38" width="64" height="7" fill="#5C4033" stroke="${INK}" stroke-width="1.6"/>
+          <rect x="-5" y="36" width="10" height="10" rx="1" fill="#FACC15" stroke="${INK}" stroke-width="1.5"/>
+        `;
+      } else {
+        torsoDetail = `
+          <rect x="-9" y="-14" width="18" height="66" fill="#FFFFFF" stroke="${INK}" stroke-width="1.6"/>
+          <polygon points="-12,-14 -9,14 -20,10" fill="#F8FAFC" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>
+          <polygon points="12,-14 9,14 20,10" fill="#F8FAFC" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="0" cy="4" r="2" fill="${INK}"/>
+          <circle cx="0" cy="19" r="2" fill="${INK}"/>
+          <circle cx="0" cy="34" r="2" fill="${INK}"/>
+        `;
+      }
+    } else if (outfitStyle === "hoodie") {
+      backHood = `<path d="M-24 -14 Q0 -25 24 -14 L18 -4 L-18 -4 Z" fill="${outfit}" stroke="${INK}" stroke-width="2.1"/>`;
+      torsoDetail = `
+        <path d="M-14 -14 Q0 -4 14 -14" fill="none" stroke="${INK}" stroke-width="2"/>
+        <line x1="-6" y1="-10" x2="-6" y2="6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+        <line x1="6" y1="-10" x2="6" y2="6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+        <rect x="-15" y="18" width="30" height="20" rx="5" fill="rgba(255,255,255,0.22)" stroke="${INK}" stroke-width="1.8"/>
+      `;
+    } else if (outfitStyle === "dress") {
+      torsoDetail = `
+        <path d="M-12 -14 Q0 -3 12 -14" fill="#FFFFFF" opacity="0.25" stroke="${INK}" stroke-width="1.7"/>
+        <rect x="-31" y="28" width="62" height="7" rx="2" fill="#102542" stroke="${INK}" stroke-width="1.5"/>
+        <rect x="-5" y="27" width="10" height="9" rx="1.5" fill="#FACC15" stroke="${INK}" stroke-width="1.4"/>
+      `;
+    } else if (outfitStyle === "uniform") {
+      torsoDetail = `
+        <polygon points="-13,-14 0,-2 13,-14" fill="#FFFFFF" stroke="${INK}" stroke-width="1.7" stroke-linejoin="round"/>
+        <polygon points="-3.5,-6 3.5,-6 4.5,14 0,19 -4.5,14" fill="#C84B31" stroke="${INK}" stroke-width="1.3"/>
+        <rect x="8" y="-2" width="13" height="14" rx="2.5" fill="#FDE047" stroke="${INK}" stroke-width="1.5"/>
+        <line x1="-31" y1="45" x2="31" y2="45" stroke="#FFFFFF" stroke-width="3"/>
+      `;
+    } else {
+      // Camiseta casual
+      torsoDetail = `
+        <path d="M-12 -14 Q0 -3 12 -14" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/>
+        <rect x="8" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.26)" stroke="${INK}" stroke-width="1.5"/>
+      `;
+    }
+
+    return { torsoDetail, backHood };
+  }
+
   function renderHumanCharacter(item, def) {
     const pose = item.pose || "standing";
     const framing = item.framing === "half" ? "half" : "full";
     const skin = item.skinColor || def.skinColor;
     const hairColor = item.hairColor || def.hairColor;
     const hairStyle = item.hairStyle || def.hairStyle;
+    const outfitStyle = item.outfitStyle || def.outfitStyle || "casual";
+    const bottomStyle = item.bottomStyle || def.bottomStyle || (item.assetId === "girl" ? "skirt" : "pants");
     const outfit = item.outfitColor || def.outfitColor;
-    const pants = def.pantsColor || "#1E293B";
+    const pants = item.pantsColor || def.pantsColor || "#1E293B";
     const acc = Object.assign({}, def.defaultAccessories, item.accessories || {});
     const isAdult = def.category === "Adultos";
-    const isGirl = item.assetId === "girl";
+    const isDress = outfitStyle === "dress";
+    const isSkirt = !isDress && bottomStyle === "skirt";
     const expr = item.expression || "happy";
 
     const tilt = pose === "typing" ? "rotate(5 0 20)" : "";
-    const sleeveColor = item.assetId === "girl" || item.assetId === "adult" ? skin : outfit;
+    const hasShortSleeves = outfitStyle === "casual" || outfitStyle === "dress" || outfitStyle === "uniform";
+    const sleeveColor = hasShortSleeves ? skin : outfit;
 
-    // Legs (Full vs Half framing)
+    const legColor = isSkirt || isDress ? skin : pants;
+    const skirtFill = isDress ? outfit : pants;
     const legsMarkup =
       framing === "full"
-        ? renderHumanLegsFull(pose, pants, isGirl)
+        ? renderHumanLegsFull(pose, legColor, skirtFill, isSkirt || isDress)
+        : isDress
+        ? `<rect x="-32" y="50" width="64" height="32" rx="4" fill="${outfit}" stroke="${INK}" stroke-width="2.3"/>`
         : `<rect x="-30" y="50" width="60" height="30" rx="4" fill="${pants}" stroke="${INK}" stroke-width="2.3"/>`;
 
-    // Torso details per character archetype
-    let torsoDetail = "";
-    if (item.assetId === "teacher") {
-      torsoDetail = `
-        <polygon points="-11,-14 11,-14 0,24" fill="#FFFFFF" stroke="${INK}" stroke-width="1.8"/>
-        <line x1="-11" y1="-14" x2="-17" y2="16" stroke="#FFFFFF" stroke-width="2"/>
-        <line x1="11" y1="-14" x2="17" y2="16" stroke="#FFFFFF" stroke-width="2"/>
-      `;
-    } else if (item.assetId === "elder") {
-      torsoDetail = `
-        <rect x="-9" y="-14" width="18" height="66" fill="#FEF3C7" stroke="${INK}" stroke-width="1.6"/>
-        <circle cx="0" cy="4" r="2" fill="${INK}"/>
-        <circle cx="0" cy="19" r="2" fill="${INK}"/>
-        <circle cx="0" cy="34" r="2" fill="${INK}"/>
-      `;
-    } else if (item.assetId === "detective") {
-      torsoDetail = `
-        <polygon points="-13,-14 0,14 13,-14" fill="#FFFFFF" stroke="${INK}" stroke-width="1.8"/>
-        <polygon points="-3,-6 3,-6 4.5,20 0,25 -4.5,20" fill="#C84B31" stroke="${INK}" stroke-width="1.4"/>
-        <rect x="-32" y="38" width="64" height="7" fill="#5C4033" stroke="${INK}" stroke-width="1.6"/>
-        <rect x="-5" y="36" width="10" height="10" rx="1" fill="#FACC15" stroke="${INK}" stroke-width="1.5"/>
-      `;
-    } else if (item.assetId === "boy") {
-      torsoDetail = `<rect x="-13" y="4" width="26" height="20" rx="4" fill="rgba(255,255,255,0.28)" stroke="${INK}" stroke-width="1.6"/>`;
-    } else if (item.assetId === "girl") {
-      torsoDetail = `<rect x="7" y="4" width="13" height="13" rx="2" fill="#FDE68A" stroke="${INK}" stroke-width="1.6"/>`;
-    } else if (item.assetId === "adult") {
-      torsoDetail = `<path d="M-11 -14 L0 -2 L11 -14" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round"/>`;
-    }
+    const { torsoDetail, backHood } = renderHumanOutfitTorsoAndDetails(outfitStyle, outfit, item.assetId);
+
+    const shoulderCaps = hasShortSleeves
+      ? `<path d="M-29 -14 Q-40 -4 -37 12 L-25 14 Z" fill="${outfit}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+         <path d="M29 -14 Q40 -4 37 12 L25 14 Z" fill="${outfit}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`
+      : "";
 
     const necklaceSvg = acc.necklace
       ? `<path d="M-10 -14 Q0 0 10 -14" fill="none" stroke="#FACC15" stroke-width="2.4" stroke-linecap="round"/>
@@ -613,8 +730,10 @@
         ${legsMarkup}
         <g transform="${tilt}">
           ${renderHairBack(hairStyle, hairColor)}
+          ${backHood}
           <rect x="-7.5" y="-28" width="15" height="18" fill="${skin}"/>
           ${renderHumanArmsAndWatch(pose, sleeveColor, skin, acc.watch)}
+          ${shoulderCaps}
           <path d="M-29 -14 L29 -14 L32 52 L-32 52 Z" fill="${outfit}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
           ${torsoDetail}
           ${necklaceSvg}
@@ -860,8 +979,17 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 22 OBJETOS DO COTIDIANO, LETRAMENTO E CIDADANIA DIGITAL
+  // 28 OBJETOS DO COTIDIANO, MOBILIÁRIO E CIDADANIA DIGITAL
   // ---------------------------------------------------------------------------
+  const OBJECT_META = {
+    chair: { isFurniture: true, defaultScale: 1.4, defaultY: 254 },
+    armchair: { isFurniture: true, defaultScale: 1.45, defaultY: 256 },
+    desk: { isFurniture: true, defaultScale: 1.45, defaultY: 256 },
+    computer_desk: { isFurniture: true, defaultScale: 1.45, defaultY: 248 },
+    bookshelf: { isFurniture: true, defaultScale: 1.55, defaultY: 210 },
+    whiteboard: { isFurniture: true, defaultScale: 1.6, defaultY: 132 },
+  };
+
   const OBJECTS = [
     { id: "laptop", name: "Notebook" },
     { id: "phone", name: "Celular" },
@@ -885,6 +1013,12 @@
     { id: "trash", name: "Lixeira" },
     { id: "lock", name: "Cadeado" },
     { id: "lightbulb", name: "Lâmpada de ideia" },
+    { id: "chair", name: "Cadeira escolar / escritório" },
+    { id: "armchair", name: "Poltrona / Sofá" },
+    { id: "desk", name: "Mesa de estudo / Escrivaninha" },
+    { id: "computer_desk", name: "Mesa de computador" },
+    { id: "bookshelf", name: "Estante de livros" },
+    { id: "whiteboard", name: "Quadro branco / Lousa" },
   ];
 
   const EMOJIS = [
@@ -914,9 +1048,11 @@
     { id: "#78350F", name: "Marrom" },
   ];
 
+  const SHAPE_FILL_COLORS = [{ id: "none", name: "Sem preenchimento (Transparente)" }].concat(DRAW_COLORS);
+
   const SHAPES = [
     { id: "circle", name: "Círculo" },
-    { id: "rect", name: "Quadrado" },
+    { id: "rect", name: "Retângulo" },
     { id: "triangle", name: "Triângulo" },
     { id: "arrow", name: "Seta" },
     { id: "star", name: "Estrela" },
@@ -1141,6 +1277,123 @@
           <line x1="7" y1="-8" x2="6" y2="18" stroke="#475569" stroke-width="2.3" stroke-linecap="round"/>
         `;
 
+      case "chair":
+        return `
+          <rect x="-34" y="-38" width="68" height="84" fill="transparent"/>
+          <!-- Pernas traseira e dianteira -->
+          <line x1="-20" y1="14" x2="-24" y2="42" stroke="#475569" stroke-width="4.5" stroke-linecap="round"/>
+          <line x1="18" y1="14" x2="22" y2="42" stroke="#475569" stroke-width="4.5" stroke-linecap="round"/>
+          <line x1="-18" y1="26" x2="18" y2="26" stroke="#64748B" stroke-width="3"/>
+          <!-- Suporte do encosto -->
+          <path d="M-21 12 L-23 -20" fill="none" stroke="#475569" stroke-width="4.5" stroke-linecap="round"/>
+          <!-- Encosto anatômico -->
+          <rect x="-28" y="-34" width="12" height="30" rx="5" fill="#102542" stroke="${INK}" stroke-width="2.3"/>
+          <!-- Assento -->
+          <rect x="-24" y="6" width="48" height="10" rx="5" fill="#C84B31" stroke="${INK}" stroke-width="2.3"/>
+        `;
+
+      case "armchair":
+        return `
+          <rect x="-44" y="-36" width="88" height="76" fill="transparent"/>
+          <!-- Pés de madeira -->
+          <rect x="-32" y="28" width="8" height="10" rx="2" fill="#78350F" stroke="${INK}" stroke-width="2"/>
+          <rect x="24" y="28" width="8" height="10" rx="2" fill="#78350F" stroke="${INK}" stroke-width="2"/>
+          <!-- Encosto estofado -->
+          <rect x="-34" y="-32" width="68" height="44" rx="12" fill="#0F766E" stroke="${INK}" stroke-width="2.5"/>
+          <line x1="-12" y1="-16" x2="-12" y2="-4" stroke="#115E59" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="-16" x2="12" y2="-4" stroke="#115E59" stroke-width="2" stroke-linecap="round"/>
+          <!-- Base e almofada -->
+          <rect x="-38" y="4" width="76" height="24" rx="7" fill="#115E59" stroke="${INK}" stroke-width="2.4"/>
+          <rect x="-28" y="2" width="56" height="14" rx="6" fill="#14B8A6" stroke="${INK}" stroke-width="2.2"/>
+          <!-- Braços laterais -->
+          <rect x="-43" y="-6" width="14" height="32" rx="7" fill="#0F766E" stroke="${INK}" stroke-width="2.4"/>
+          <rect x="29" y="-6" width="14" height="32" rx="7" fill="#0F766E" stroke="${INK}" stroke-width="2.4"/>
+        `;
+
+      case "desk":
+        return `
+          <rect x="-44" y="-32" width="88" height="72" fill="transparent"/>
+          <!-- Gaveteiro direito -->
+          <rect x="14" y="-4" width="24" height="38" rx="3" fill="#B45309" stroke="${INK}" stroke-width="2.3"/>
+          <rect x="17" y="1" width="18" height="13" rx="2" fill="#D97706" stroke="${INK}" stroke-width="1.6"/>
+          <rect x="17" y="17" width="18" height="13" rx="2" fill="#D97706" stroke="${INK}" stroke-width="1.6"/>
+          <circle cx="26" cy="7.5" r="1.8" fill="#FEF3C7"/>
+          <circle cx="26" cy="23.5" r="1.8" fill="#FEF3C7"/>
+          <!-- Pés esquerdos -->
+          <rect x="-38" y="-4" width="7" height="42" rx="2" fill="#475569" stroke="${INK}" stroke-width="2.1"/>
+          <rect x="35" y="32" width="5" height="6" rx="1" fill="#475569" stroke="${INK}" stroke-width="1.8"/>
+          <!-- Tampo da escrivaninha -->
+          <rect x="-43" y="-12" width="86" height="10" rx="3" fill="#D97706" stroke="${INK}" stroke-width="2.5"/>
+          <!-- Porta-lápis / caneta decorativa -->
+          <rect x="-28" y="-24" width="10" height="12" rx="2" fill="#2563EB" stroke="${INK}" stroke-width="1.8"/>
+          <line x1="-25" y1="-30" x2="-24" y2="-24" stroke="#FACC15" stroke-width="2.4" stroke-linecap="round"/>
+          <line x1="-21" y1="-29" x2="-22" y2="-24" stroke="#C84B31" stroke-width="2.4" stroke-linecap="round"/>
+        `;
+
+      case "computer_desk":
+        return `
+          <!-- Estrutura da mesa -->
+          <rect x="-38" y="4" width="7" height="34" rx="2" fill="#334155" stroke="${INK}" stroke-width="2.1"/>
+          <rect x="31" y="4" width="7" height="34" rx="2" fill="#334155" stroke="${INK}" stroke-width="2.1"/>
+          <rect x="-32" y="16" width="64" height="5" fill="#475569"/>
+          <!-- Gabinete CPU na base direita -->
+          <rect x="15" y="10" width="16" height="26" rx="2" fill="#1E293B" stroke="${INK}" stroke-width="2"/>
+          <circle cx="23" cy="17" r="2" fill="#38BDF8"/>
+          <line x1="19" y1="24" x2="27" y2="24" stroke="#64748B" stroke-width="2"/>
+          <!-- Tampo -->
+          <rect x="-43" y="-4" width="86" height="9" rx="3" fill="#94A3B8" stroke="${INK}" stroke-width="2.4"/>
+          <!-- Monitor -->
+          <rect x="-4" y="-12" width="8" height="8" fill="#334155" stroke="${INK}" stroke-width="1.6"/>
+          <rect x="-24" y="-38" width="48" height="28" rx="3" fill="#0F172A" stroke="${INK}" stroke-width="2.3"/>
+          <rect x="-20" y="-34" width="40" height="20" rx="1.5" fill="#BAE6FD"/>
+          <line x1="-14" y1="-28" x2="10" y2="-28" stroke="#0284C7" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="-14" y1="-22" x2="4" y2="-22" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>
+          <!-- Teclado -->
+          <rect x="-18" y="-7" width="26" height="3" rx="1" fill="#1E293B"/>
+        `;
+
+      case "bookshelf":
+        return `
+          <rect x="-32" y="-38" width="64" height="76" rx="4" fill="#78350F" stroke="${INK}" stroke-width="2.5"/>
+          <rect x="-27" y="-33" width="54" height="20" fill="#451A03"/>
+          <rect x="-27" y="-9" width="54" height="20" fill="#451A03"/>
+          <rect x="-27" y="15" width="54" height="19" fill="#451A03"/>
+          <!-- Livros prateleira 1 -->
+          <rect x="-24" y="-30" width="8" height="17" fill="#C84B31" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="-15" y="-28" width="7" height="15" fill="#FACC15" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="-7" y="-31" width="9" height="18" fill="#2563EB" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="4" y="-29" width="8" height="16" fill="#16A34A" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="13" y="-27" width="9" height="14" fill="#EA580C" stroke="${INK}" stroke-width="1.3"/>
+          <!-- Livros prateleira 2 -->
+          <rect x="-24" y="-6" width="9" height="17" fill="#0F766E" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="-14" y="-5" width="7" height="16" fill="#7C3AED" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="-6" y="-8" width="9" height="19" fill="#DC2626" stroke="${INK}" stroke-width="1.3"/>
+          <circle cx="14" cy="2" r="7" fill="#38BDF8" stroke="${INK}" stroke-width="1.5"/>
+          <!-- Livros prateleira 3 -->
+          <rect x="-23" y="18" width="18" height="15" rx="2" fill="#FEF3C7" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="1" y="18" width="8" height="16" fill="#2563EB" stroke="${INK}" stroke-width="1.3"/>
+          <rect x="10" y="20" width="9" height="14" fill="#C84B31" stroke="${INK}" stroke-width="1.3"/>
+        `;
+
+      case "whiteboard":
+        return `
+          <!-- Suporte/pés curtos da lousa -->
+          <line x1="-26" y1="24" x2="-30" y2="38" stroke="#475569" stroke-width="3.5" stroke-linecap="round"/>
+          <line x1="26" y1="24" x2="30" y2="38" stroke="#475569" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Moldura -->
+          <rect x="-42" y="-32" width="84" height="56" rx="4" fill="#CBD5E1" stroke="${INK}" stroke-width="2.5"/>
+          <rect x="-37" y="-27" width="74" height="44" rx="2" fill="#FFFFFF" stroke="#64748B" stroke-width="1.4"/>
+          <!-- Anotações -->
+          <line x1="-28" y1="-16" x2="6" y2="-16" stroke="#102542" stroke-width="3" stroke-linecap="round"/>
+          <line x1="-28" y1="-6" x2="18" y2="-6" stroke="#64748B" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="-28" y1="3" x2="-2" y2="3" stroke="#C84B31" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="20" cy="4" r="7" fill="none" stroke="#16A34A" stroke-width="2.2"/>
+          <!-- Bandeja e pincéis -->
+          <rect x="-32" y="21" width="64" height="5" rx="2" fill="#64748B" stroke="${INK}" stroke-width="1.5"/>
+          <rect x="-18" y="18" width="12" height="3.5" rx="1" fill="#2563EB"/>
+          <rect x="-2" y="18" width="12" height="3.5" rx="1" fill="#DC2626"/>
+        `;
+
       case "lightbulb":
       default:
         return `
@@ -1160,29 +1413,76 @@
   }
 
   // ---------------------------------------------------------------------------
-  // BALÕES DE FALA, PENSAMENTO, GRITO E NARRADOR
+  // BALÕES DE FALA, PENSAMENTO (NUVEM), COCHICHO, GRITO E NARRADOR
   // ---------------------------------------------------------------------------
   const BUBBLE_TYPES = [
     { id: "speech", name: "Fala normal" },
     { id: "thought", name: "Pensamento" },
+    { id: "whisper", name: "Cochicho / Sussurro" },
     { id: "shout", name: "Grito / Alerta" },
     { id: "narrator", name: "Narrador" },
   ];
+
+  function buildThoughtCloudPath(hw, hh) {
+    const rx = hw + 10;
+    const ry = hh + 8;
+    const fineCount = 180;
+    const finePts = [];
+    let totalLen = 0;
+
+    for (let i = 0; i <= fineCount; i++) {
+      const t = (i / fineCount) * Math.PI * 2;
+      const cos = Math.cos(t);
+      const sin = Math.sin(t);
+      const x = Math.sign(cos) * Math.pow(Math.abs(cos), 0.72) * rx;
+      const y = Math.sign(sin) * Math.pow(Math.abs(sin), 0.72) * ry;
+      if (i > 0) {
+        const prev = finePts[i - 1];
+        totalLen += Math.hypot(x - prev.x, y - prev.y);
+      }
+      finePts.push({ x, y, len: totalLen });
+    }
+
+    const puffCount = Math.max(10, Math.min(18, Math.round(totalLen / 30)));
+    const stepLen = totalLen / puffCount;
+    const anchors = [];
+    let fineIdx = 0;
+
+    for (let k = 0; k < puffCount; k++) {
+      const target = k * stepLen;
+      while (fineIdx < fineCount - 1 && finePts[fineIdx + 1].len < target) {
+        fineIdx += 1;
+      }
+      anchors.push(finePts[fineIdx]);
+    }
+
+    const segs = [`M ${anchors[0].x.toFixed(1)} ${anchors[0].y.toFixed(1)}`];
+    for (let k = 0; k < puffCount; k++) {
+      const a = anchors[k];
+      const b = anchors[(k + 1) % puffCount];
+      const chord = Math.hypot(b.x - a.x, b.y - a.y);
+      const r = (Math.max(8, chord) * 0.56).toFixed(1);
+      segs.push(`A ${r} ${r} 0 0 1 ${b.x.toFixed(1)} ${b.y.toFixed(1)}`);
+    }
+    segs.push("Z");
+    return { cloudPath: segs.join(" "), outerRx: rx, outerRy: ry };
+  }
 
   function renderBubbleMarkup(bubble) {
     const type = bubble.type || "speech";
     const fontSize = Number(bubble.fontSize) || 14;
     const lineHeight = Math.round(fontSize * 1.28);
     const tailDir = bubble.tailDir === "right" ? "right" : "left";
+    const fontFamilyId = bubble.fontFamily || "sans";
 
     const maxInnerW = type === "narrator" ? 316 : 182;
-    const { lines, widthUsed } = wrapLines(bubble.text, maxInnerW, fontSize);
-    const padX = type === "shout" ? 22 : 16;
-    const padY = type === "narrator" ? 9 : type === "shout" ? 16 : 12;
+    const { lines, widthUsed, fontCss } = wrapLines(bubble.text, maxInnerW, fontSize, fontFamilyId);
+    const padX = type === "shout" ? 22 : type === "thought" ? 24 : 16;
+    const padY = type === "narrator" ? 9 : type === "shout" ? 16 : type === "thought" ? 17 : 12;
 
-    const minW = type === "narrator" ? 180 : 112;
+    const minW = type === "narrator" ? 180 : type === "thought" ? 124 : 112;
     const boxW = Math.max(minW, Math.round(widthUsed + padX * 2));
-    const boxH = Math.max(34, lines.length * lineHeight + padY * 2);
+    const boxH = Math.max(type === "thought" ? 44 : 34, lines.length * lineHeight + padY * 2);
 
     const hw = boxW / 2;
     const hh = boxH / 2;
@@ -1191,22 +1491,12 @@
     if (type === "narrator") {
       shapeSvg = `<rect x="${-hw}" y="${-hh}" width="${boxW}" height="${boxH}" rx="4" fill="#FEF3C7" stroke="${INK}" stroke-width="2.5"/>`;
     } else if (type === "thought") {
-      const dots =
-        tailDir === "right"
-          ? `<circle cx="${hw * 0.45}" cy="${hh + 11}" r="5.5" fill="#FFFFFF" stroke="${INK}" stroke-width="2.2"/>
-             <circle cx="${hw * 0.65}" cy="${hh + 22}" r="3.5" fill="#FFFFFF" stroke="${INK}" stroke-width="2"/>`
-          : `<circle cx="${-hw * 0.45}" cy="${hh + 11}" r="5.5" fill="#FFFFFF" stroke="${INK}" stroke-width="2.2"/>
-             <circle cx="${-hw * 0.65}" cy="${hh + 22}" r="3.5" fill="#FFFFFF" stroke="${INK}" stroke-width="2"/>`;
-      const cloudPath = `
-        M ${-hw + 14} ${-hh}
-        Q ${-hw * 0.45} ${-hh - 14} 0 ${-hh - 7}
-        Q ${hw * 0.45} ${-hh - 14} ${hw - 14} ${-hh}
-        Q ${hw + 14} ${-hh * 0.35} ${hw + 4} 0
-        Q ${hw + 14} ${hh * 0.45} ${hw - 12} ${hh}
-        Q ${hw * 0.4} ${hh + 11} 0 ${hh + 6}
-        Q ${-hw * 0.4} ${hh + 11} ${-hw + 12} ${hh}
-        Q ${-hw - 14} ${hh * 0.45} ${-hw - 4} 0
-        Q ${-hw - 14} ${-hh * 0.35} ${-hw + 14} ${-hh} Z
+      const { cloudPath, outerRy } = buildThoughtCloudPath(hw, hh);
+      const sign = tailDir === "right" ? 1 : -1;
+      const dots = `
+        <circle cx="${(sign * hw * 0.4).toFixed(1)}" cy="${(outerRy + 12).toFixed(1)}" r="6.8" fill="#FFFFFF" stroke="${INK}" stroke-width="2.2"/>
+        <circle cx="${(sign * hw * 0.58).toFixed(1)}" cy="${(outerRy + 24).toFixed(1)}" r="4.6" fill="#FFFFFF" stroke="${INK}" stroke-width="2"/>
+        <circle cx="${(sign * hw * 0.72).toFixed(1)}" cy="${(outerRy + 33).toFixed(1)}" r="3" fill="#FFFFFF" stroke="${INK}" stroke-width="1.8"/>
       `;
       shapeSvg = `${dots}<path d="${cloudPath}" fill="#FFFFFF" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
     } else if (type === "shout") {
@@ -1231,6 +1521,7 @@
           : `<polygon points="${-hw * 0.23},${hh - 6} ${-hw * 0.59},${hh + 22} ${-hw * 0.44},${hh - 6}" fill="#FEF08A"/>`;
       shapeSvg = `${tailPoly}<polygon points="${pts.join(" ")}" fill="#FEF08A" stroke="${BURNT}" stroke-width="3" stroke-linejoin="round"/>${tailFillMask}`;
     } else {
+      // speech | whisper
       const r = 14;
       const tipX = tailDir === "right" ? hw * 0.52 : -hw * 0.52;
       const tailRootA = tailDir === "right" ? hw * 0.14 : -hw * 0.36;
@@ -1249,7 +1540,11 @@
         V ${-hh + r}
         Q ${-hw} ${-hh} ${-hw + r} ${-hh} Z
       `;
-      shapeSvg = `<path d="${d}" fill="#FFFFFF" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
+      if (type === "whisper") {
+        shapeSvg = `<path d="${d}" fill="#F8FAFC" stroke="#475569" stroke-width="2.4" stroke-dasharray="6 4" stroke-linejoin="round" stroke-linecap="round"/>`;
+      } else {
+        shapeSvg = `<path d="${d}" fill="#FFFFFF" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
+      }
     }
 
     const totalTextH = lines.length * lineHeight;
@@ -1263,9 +1558,10 @@
       )
       .join("");
 
-    const textColor = type === "shout" ? "#7C2D12" : INK;
-    const fontWeight = type === "shout" ? "700" : "600";
-    const textSvg = `<text text-anchor="middle" font-family='"Segoe UI", system-ui, -apple-system, Arial, sans-serif' font-size="${fontSize}" font-weight="${fontWeight}" fill="${textColor}">${tspans}</text>`;
+    const textColor = type === "shout" ? "#7C2D12" : type === "whisper" ? "#334155" : INK;
+    const fontWeight = type === "shout" ? "700" : type === "whisper" ? "500" : "600";
+    const fontStyleAttr = type === "whisper" ? ' font-style="italic"' : "";
+    const textSvg = `<text text-anchor="middle" font-family="${escapeXml(fontCss)}" font-size="${fontSize}" font-weight="${fontWeight}"${fontStyleAttr} fill="${textColor}">${tspans}</text>`;
 
     return { markup: shapeSvg + textSvg, boxW, boxH };
   }
@@ -1317,18 +1613,21 @@
     )}</text>`;
   }
 
-  function renderShapeMarkup(shapeId, color) {
-    const fill = color || "#C84B31";
-    const strokeCol = fill.toUpperCase() === "#111827" ? "#374151" : INK;
+  function renderShapeMarkup(shapeId, fillColor, strokeColor) {
+    const fill = fillColor === "none" ? "none" : fillColor || "#C84B31";
+    const strokeCol =
+      strokeColor ||
+      (fill !== "none" && fill.toUpperCase() === "#111827" ? "#374151" : INK);
+    const hitArea = `<rect x="-32" y="-32" width="64" height="64" fill="transparent"/>`;
     switch (shapeId) {
       case "circle":
-        return `<circle cx="0" cy="0" r="28" fill="${fill}" stroke="${strokeCol}" stroke-width="2.6"/>`;
+        return `${hitArea}<circle cx="0" cy="0" r="28" fill="${fill}" stroke="${strokeCol}" stroke-width="2.8"/>`;
       case "rect":
-        return `<rect x="-28" y="-24" width="56" height="48" rx="4" fill="${fill}" stroke="${strokeCol}" stroke-width="2.6"/>`;
+        return `${hitArea}<rect x="-28" y="-22" width="56" height="44" rx="4" fill="${fill}" stroke="${strokeCol}" stroke-width="2.8"/>`;
       case "triangle":
-        return `<polygon points="0,-29 30,24 -30,24" fill="${fill}" stroke="${strokeCol}" stroke-width="2.6" stroke-linejoin="round"/>`;
+        return `${hitArea}<polygon points="0,-29 30,24 -30,24" fill="${fill}" stroke="${strokeCol}" stroke-width="2.8" stroke-linejoin="round"/>`;
       case "arrow":
-        return `<polygon points="-32,-10 6,-10 6,-24 34,0 6,24 6,10 -32,10" fill="${fill}" stroke="${strokeCol}" stroke-width="2.5" stroke-linejoin="round"/>`;
+        return `${hitArea}<polygon points="-32,-10 6,-10 6,-24 34,0 6,24 6,10 -32,10" fill="${fill}" stroke="${strokeCol}" stroke-width="2.7" stroke-linejoin="round"/>`;
       case "star":
       default: {
         const pts = [];
@@ -1337,7 +1636,7 @@
           const a = -Math.PI / 2 + (i * Math.PI) / 5;
           pts.push(`${(Math.cos(a) * r).toFixed(1)},${(Math.sin(a) * r).toFixed(1)}`);
         }
-        return `<polygon points="${pts.join(" ")}" fill="${fill}" stroke="${strokeCol}" stroke-width="2.5" stroke-linejoin="round"/>`;
+        return `${hitArea}<polygon points="${pts.join(" ")}" fill="${fill}" stroke="${strokeCol}" stroke-width="2.7" stroke-linejoin="round"/>`;
       }
     }
   }
@@ -1346,7 +1645,10 @@
     if (item.kind === "character") return renderCharacterMarkup(item);
     if (item.kind === "object") return renderObjectMarkup(item.assetId);
     if (item.kind === "emoji") return renderEmojiMarkup(item.emoji || item.assetId);
-    if (item.kind === "shape") return renderShapeMarkup(item.assetId, item.color);
+    if (item.kind === "shape") {
+      const fill = item.fillColor !== undefined ? item.fillColor : item.color;
+      return renderShapeMarkup(item.assetId, fill, item.strokeColor);
+    }
     if (item.kind === "bubble") return renderBubbleMarkup(item).markup;
     return "";
   }
@@ -1382,7 +1684,7 @@
     return under + drawImg + over;
   }
 
-  function buildThumbnailSvg(kind, assetId, extraColor) {
+  function buildThumbnailSvg(kind, assetId, extraFillColor, extraStrokeColor) {
     if (kind === "scene" && global.HQScenes) {
       return `<svg viewBox="0 0 400 340" xmlns="${SVG_NS}" aria-hidden="true">${global.HQScenes.renderSceneMarkup(
         assetId
@@ -1400,7 +1702,10 @@
         skinColor: def.skinColor,
         hairColor: def.hairColor,
         hairStyle: def.hairStyle,
+        outfitStyle: def.outfitStyle,
+        bottomStyle: def.bottomStyle,
         outfitColor: def.outfitColor,
+        pantsColor: def.pantsColor,
         accessories: def.defaultAccessories,
       };
       const vb = def.isAnimal ? "-52 -88 104 152" : "-60 -116 120 256";
@@ -1416,17 +1721,25 @@
     if (kind === "shape") {
       return `<svg viewBox="-40 -40 80 80" xmlns="${SVG_NS}" aria-hidden="true">${renderShapeMarkup(
         assetId,
-        extraColor
+        extraFillColor,
+        extraStrokeColor
       )}</svg>`;
     }
     if (kind === "bubble") {
       const sample = {
         type: assetId,
-        text: assetId === "narrator" ? "Narrador" : assetId === "shout" ? "Alerta!" : "Texto...",
+        text:
+          assetId === "narrator"
+            ? "Narrador"
+            : assetId === "shout"
+            ? "Alerta!"
+            : assetId === "whisper"
+            ? "Segredo..."
+            : "Texto...",
         fontSize: 13,
         tailDir: "left",
       };
-      return `<svg viewBox="-100 -52 200 108" xmlns="${SVG_NS}" aria-hidden="true">${
+      return `<svg viewBox="-108 -60 216 128" xmlns="${SVG_NS}" aria-hidden="true">${
         renderBubbleMarkup(sample).markup
       }</svg>`;
     }
@@ -1444,12 +1757,18 @@
     ANIMAL_COAT_COLORS,
     HAIR_COLORS,
     OUTFIT_COLORS,
+    OUTFIT_STYLES,
+    BOTTOM_STYLES,
+    BOTTOM_COLORS,
     ACCESSORY_LIST,
     OBJECTS,
+    OBJECT_META,
     EMOJIS,
     DRAW_COLORS,
+    SHAPE_FILL_COLORS,
     SHAPES,
     BUBBLE_TYPES,
+    BUBBLE_FONTS,
     escapeXml,
     wrapLines,
     renderCharacterMarkup,

@@ -9,23 +9,56 @@
     return (clean || "tirinha-hq-criativa") + ".png";
   }
 
+  function normalizeLayoutMode(panelCount, layoutMode) {
+    const count = Number(panelCount) === 2 ? 2 : Number(panelCount) === 4 ? 4 : 3;
+    if (count === 4) {
+      return layoutMode === "grid" || layoutMode === "row" || layoutMode === "col" ? layoutMode : "grid";
+    }
+    return layoutMode === "col" ? "col" : "row";
+  }
+
+  function computeLayoutGrid(panelCount, layoutMode) {
+    const count = Math.min(4, Math.max(2, Number(panelCount) || 3));
+    const mode = normalizeLayoutMode(count, layoutMode);
+    if (mode === "col") return { count, layoutMode: mode, cols: 1, rows: count };
+    if (mode === "grid" && count === 4) return { count, layoutMode: mode, cols: 2, rows: 2 };
+    return { count, layoutMode: mode, cols: count, rows: 1 };
+  }
+
   function computeStripDimensions(state) {
-    const count = Math.min(state.panelCount || 3, state.panels.length);
+    const { count, layoutMode, cols, rows } = computeLayoutGrid(
+      Math.min(state.panelCount || 3, state.panels.length),
+      state.layoutMode
+    );
     const outerPad = 36;
     const headerH = 88;
     const panelW = 400;
     const panelH = 340;
     const gutter = 18;
-    const totalW = outerPad * 2 + count * panelW + (count - 1) * gutter;
-    const totalH = outerPad * 2 + headerH + panelH;
-    return { count, outerPad, headerH, panelW, panelH, gutter, totalW, totalH };
+    const gridW = cols * panelW + (cols - 1) * gutter;
+    const gridH = rows * panelH + (rows - 1) * gutter;
+    const contentW = cols === 1 ? Math.max(gridW, 520) : gridW;
+    const gridStartX = outerPad + Math.round((contentW - gridW) / 2);
+    const totalW = outerPad * 2 + contentW;
+    const totalH = outerPad * 2 + headerH + gridH;
+    return { count, layoutMode, cols, rows, outerPad, headerH, panelW, panelH, gutter, gridW, gridH, contentW, gridStartX, totalW, totalH };
+  }
+
+  function getPanelSlotPos(index, dims) {
+    const col = index % dims.cols;
+    const row = Math.floor(index / dims.cols);
+    return {
+      px: dims.gridStartX + col * (dims.panelW + dims.gutter),
+      py: dims.outerPad + dims.headerH + row * (dims.panelH + dims.gutter),
+    };
   }
 
   function buildHeaderAndClipDefs(state, dims) {
-    const { outerPad, panelW, panelH, totalW } = dims;
+    const { outerPad, panelW, panelH, totalW, contentW } = dims;
     const titleText = (state.title || "").trim() || "Minha Tirinha Digital";
     const authorsText = (state.authors || "").trim();
     const esc = global.HQArt.escapeXml;
+    const titleFontSize = contentW < 620 ? 24 : 30;
 
     const clipDefs = Array.from({ length: dims.count })
       .map(
@@ -40,7 +73,7 @@
 
     const headerSvg = `
       <rect x="${outerPad}" y="${outerPad + 66}" width="${totalW - outerPad * 2}" height="3" rx="1.5" fill="#C84B31"/>
-      <text x="${outerPad}" y="${outerPad + 28}" font-family='"Segoe UI", system-ui, -apple-system, Arial, sans-serif' font-size="30" font-weight="700" fill="#102542">${esc(titleText)}</text>
+      <text x="${outerPad}" y="${outerPad + 28}" font-family='"Segoe UI", system-ui, -apple-system, Arial, sans-serif' font-size="${titleFontSize}" font-weight="700" fill="#102542">${esc(titleText)}</text>
       ${authorLine}
     `;
 
@@ -50,14 +83,13 @@
   // Exporta camada base (cenario + personagens + objetos + emojis + formas), separando baloes para compor sobre os tracos de desenho
   function buildExportSvgDocument(state, mode = "all") {
     const dims = computeStripDimensions(state);
-    const { outerPad, headerH, panelW, panelH, gutter, totalW, totalH } = dims;
+    const { panelW, panelH, totalW, totalH } = dims;
     const panels = state.panels.slice(0, dims.count);
     const { clipDefs, headerSvg } = buildHeaderAndClipDefs(state, dims);
 
     const panelsMarkup = panels
       .map((panel, i) => {
-        const px = outerPad + i * (panelW + gutter);
-        const py = outerPad + headerH;
+        const { px, py } = getPanelSlotPos(i, dims);
         let inner = "";
         if (mode === "under") {
           inner = global.HQArt.renderPanelUnderLayerSvg(panel);
@@ -115,7 +147,7 @@
 
   async function renderStripToCanvas(state) {
     const dims = computeStripDimensions(state);
-    const scale = state.panelCount >= 4 ? 1.8 : 2.1;
+    const scale = dims.cols >= 4 ? 1.8 : dims.cols === 1 && dims.rows >= 4 ? 1.7 : 2.05;
     const outW = Math.round(dims.totalW * scale);
     const outH = Math.round(dims.totalH * scale);
 
@@ -142,14 +174,13 @@
     const underImg = await loadImage(svgStringToBase64Url(underDoc.svg));
     ctx.drawImage(underImg, 0, 0, outW, outH);
 
-    // 2. Traços livres (desenho e borracha) exatamente na área de cada quadro
+    // 2. Traços livres (desenho e borracha) exatamente na posição do quadro no layout escolhido
     for (let i = 0; i < panels.length; i++) {
       const dUrl = panels[i].drawingDataUrl;
       if (!dUrl) continue;
       const drawImg = await loadImage(dUrl);
-      const px = (dims.outerPad + i * (dims.panelW + dims.gutter)) * scale;
-      const py = (dims.outerPad + dims.headerH) * scale;
-      ctx.drawImage(drawImg, px, py, dims.panelW * scale, dims.panelH * scale);
+      const pos = getPanelSlotPos(i, dims);
+      ctx.drawImage(drawImg, pos.px * scale, pos.py * scale, dims.panelW * scale, dims.panelH * scale);
     }
 
     // 3. Balões e bordas HQ nítidas por cima de tudo
@@ -195,6 +226,9 @@
   }
 
   global.HQExporter = {
+    normalizeLayoutMode,
+    computeLayoutGrid,
+    computeStripDimensions,
     buildExportSvgDocument,
     renderStripToCanvas,
     exportStripToPng,

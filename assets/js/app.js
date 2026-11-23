@@ -24,6 +24,7 @@
       title: "Fake news não passa por aqui",
       authors: "",
       panelCount: 3,
+      layoutMode: "row",
       activePanelIndex: 0,
       selectedItemId: null,
       panels: [
@@ -51,19 +52,26 @@
     type: "speech",
     text: "Oi! Vamos checar essa fonte?",
     fontSize: 15,
+    fontFamily: "sans",
     tailDir: "left",
   };
+  let focusMode = false;
 
   // Estado da aba Desenhar
   let drawTool = "pencil"; // "move" | "pencil" | "pen" | "brush" | "eraser"
   let drawColor = "#111827";
-  let drawSize = 4;
+  let drawSize = 2;
+  let shapeFillColor = "#7C3AED";
+  let shapeStrokeColor = "#111827";
 
   // DOM
   const titleInput = document.getElementById("hqTitleInput");
   const authorsInput = document.getElementById("hqAuthorsInput");
   const layoutButtons = document.querySelectorAll("[data-layout-count]");
+  const layoutModeGroup = document.getElementById("layoutModeGroup");
   const panelJumpTabs = document.getElementById("panelJumpTabs");
+  const btnDuplicatePanel = document.getElementById("btnDuplicatePanel");
+  const btnFocusMode = document.getElementById("btnFocusMode");
   const comicPanelsEl = document.getElementById("comicPanels");
   const sidebarTabButtons = document.querySelectorAll("[data-sidebar-tab]");
   const sidebarBodyEl = document.getElementById("sidebarBody");
@@ -77,6 +85,12 @@
   const themesModal = document.getElementById("themesModal");
   const themesListEl = document.getElementById("themesList");
   const btnCloseThemes = document.getElementById("btnCloseThemes");
+  const confirmModal = document.getElementById("confirmModal");
+  const confirmModalTitle = document.getElementById("confirmModalTitle");
+  const confirmModalMessage = document.getElementById("confirmModalMessage");
+  const btnConfirmClose = document.getElementById("btnConfirmClose");
+  const btnConfirmCancel = document.getElementById("btnConfirmCancel");
+  const btnConfirmOk = document.getElementById("btnConfirmOk");
   const toastEl = document.getElementById("statusToast");
 
   let toastTimer = null;
@@ -96,6 +110,9 @@
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.panels) || parsed.panels.length < 4) return null;
+      parsed.layoutMode = window.HQExporter
+        ? window.HQExporter.normalizeLayoutMode(parsed.panelCount, parsed.layoutMode)
+        : "row";
       return parsed;
     } catch (_) {
       return null;
@@ -114,6 +131,7 @@
         title: state.title,
         authors: state.authors,
         panelCount: state.panelCount,
+        layoutMode: state.layoutMode,
         activePanelIndex: state.activePanelIndex,
         selectedItemId: state.selectedItemId,
         panels: state.panels,
@@ -309,6 +327,21 @@
   // ---------------------------------------------------------------------------
   // RENDERING PANELS & CANVAS DRAWING OVERLAY
   // ---------------------------------------------------------------------------
+  function getLayoutOptionsForCount(panelCount) {
+    if (panelCount === 4) {
+      return [
+        { id: "grid", label: "Grade 2×2" },
+        { id: "row", label: "Horizontal (4 col.)" },
+        { id: "col", label: "Vertical (4 lin.)" },
+      ];
+    }
+    const unit = panelCount === 2 ? "2" : "3";
+    return [
+      { id: "row", label: `Horizontal (${unit} col.)` },
+      { id: "col", label: `Vertical (${unit} lin.)` },
+    ];
+  }
+
   function renderHeaderInputs() {
     if (titleInput && titleInput.value !== state.title) titleInput.value = state.title || "";
     if (authorsInput && authorsInput.value !== state.authors) authorsInput.value = state.authors || "";
@@ -318,6 +351,42 @@
       btn.classList.toggle("is-active", active);
       btn.setAttribute("aria-pressed", String(active));
     });
+
+    if (layoutModeGroup) {
+      const currentMode = HQExporter.normalizeLayoutMode(state.panelCount, state.layoutMode);
+      state.layoutMode = currentMode;
+      const opts = getLayoutOptionsForCount(state.panelCount);
+      layoutModeGroup.innerHTML = opts
+        .map(
+          (o) =>
+            `<button type="button" class="seg-btn${currentMode === o.id ? " is-active" : ""}" data-layout-mode="${o.id}" aria-pressed="${
+              currentMode === o.id
+            }">${o.label}</button>`
+        )
+        .join("");
+      layoutModeGroup.querySelectorAll("[data-layout-mode]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const nextMode = btn.getAttribute("data-layout-mode");
+          if (nextMode === state.layoutMode) return;
+          pushUndoSnapshot();
+          state.layoutMode = nextMode;
+          persistState();
+          renderAll();
+        });
+      });
+    }
+
+    if (btnFocusMode) {
+      btnFocusMode.classList.toggle("is-active", focusMode);
+      btnFocusMode.setAttribute("aria-pressed", String(focusMode));
+      const sp = btnFocusMode.querySelector("span");
+      if (sp) {
+        sp.textContent = focusMode
+          ? "Visualização Completa da Tirinha"
+          : "Modo Foco (Editar quadro ampliado)";
+      }
+    }
+
     updateUndoButton();
   }
 
@@ -346,7 +415,11 @@
 
   function renderPanels() {
     if (!comicPanelsEl) return;
+    const layoutMode = HQExporter.normalizeLayoutMode(state.panelCount, state.layoutMode);
+    state.layoutMode = layoutMode;
     comicPanelsEl.dataset.count = String(state.panelCount);
+    comicPanelsEl.dataset.layout = layoutMode;
+    comicPanelsEl.classList.toggle("is-focus-mode", focusMode);
     comicPanelsEl.innerHTML = "";
 
     const drawingMode = isDrawingActive();
@@ -363,6 +436,29 @@
       badge.className = "panel-badge";
       badge.textContent = `Quadro ${i + 1}`;
       card.appendChild(badge);
+
+      const focusBtn = document.createElement("button");
+      focusBtn.type = "button";
+      focusBtn.className = "panel-focus-btn";
+      const isFocusedHere = focusMode && isActive;
+      focusBtn.title = isFocusedHere ? "Voltar à Visualização Completa da Tirinha" : "Editar quadro ampliado (Modo Foco)";
+      focusBtn.setAttribute("aria-label", focusBtn.title);
+      focusBtn.innerHTML = isFocusedHere
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+      focusBtn.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      focusBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (focusMode && state.activePanelIndex === i) {
+          focusMode = false;
+        } else {
+          state.activePanelIndex = i;
+          focusMode = true;
+          persistState();
+        }
+        renderAll();
+      });
+      card.appendChild(focusBtn);
 
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("viewBox", `0 0 ${PANEL_W} ${PANEL_H}`);
@@ -410,6 +506,19 @@
     liveDrawBufferMap.clear();
   }
 
+  function getDrawToolStyle(tool, size) {
+    if (tool === "pencil") {
+      return { alpha: 0.75, grain: true, blur: 0, lineWidth: size * DRAW_SCALE };
+    }
+    if (tool === "brush") {
+      return { alpha: 0.85, grain: false, blur: Math.max(2, size * 0.45), lineWidth: size * DRAW_SCALE };
+    }
+    if (tool === "eraser") {
+      return { alpha: 1, grain: false, blur: 0, lineWidth: size * DRAW_SCALE, eraser: true };
+    }
+    return { alpha: 1, grain: false, blur: 0, lineWidth: size * DRAW_SCALE };
+  }
+
   function createLiveDrawingCanvas(panelIndex, panel) {
     const buf = getOrCreateDrawBuffer(panelIndex, panel);
     const canvas = document.createElement("canvas");
@@ -418,6 +527,11 @@
     canvas.className = "panel-draw-canvas" + (drawTool === "eraser" ? " is-eraser" : "");
     const ctx = canvas.getContext("2d");
     const bctx = buf.getContext("2d");
+
+    const strokeCanvas = document.createElement("canvas");
+    strokeCanvas.width = canvas.width;
+    strokeCanvas.height = canvas.height;
+    const sctx = strokeCanvas.getContext("2d");
 
     ctx.drawImage(buf, 0, 0);
     if (panel.drawingDataUrl) {
@@ -437,6 +551,7 @@
 
     let drawing = false;
     let lastPt = null;
+    let grainSeed = 0;
 
     function getPt(e) {
       const rect = canvas.getBoundingClientRect();
@@ -446,23 +561,53 @@
       };
     }
 
-    function applyStroke(targetCtx, fromPt, toPt) {
+    function paintSegment(targetCtx, fromPt, toPt, spec) {
       targetCtx.save();
       targetCtx.lineCap = "round";
       targetCtx.lineJoin = "round";
-      targetCtx.lineWidth = drawSize * DRAW_SCALE;
-      if (drawTool === "eraser") {
+      targetCtx.lineWidth = spec.lineWidth;
+      if (spec.eraser) {
         targetCtx.globalCompositeOperation = "destination-out";
         targetCtx.strokeStyle = "rgba(0,0,0,1)";
       } else {
         targetCtx.globalCompositeOperation = "source-over";
         targetCtx.strokeStyle = drawColor;
+        if (spec.blur > 0) {
+          targetCtx.shadowBlur = spec.blur;
+          targetCtx.shadowColor = drawColor;
+        }
       }
       targetCtx.beginPath();
       targetCtx.moveTo(fromPt.x, fromPt.y);
       targetCtx.lineTo(toPt.x, toPt.y);
       targetCtx.stroke();
+
+      if (spec.grain) {
+        targetCtx.shadowBlur = 0;
+        targetCtx.fillStyle = drawColor;
+        const dist = Math.max(1, Math.hypot(toPt.x - fromPt.x, toPt.y - fromPt.y));
+        const steps = Math.min(18, Math.ceil(dist / 3));
+        const spread = Math.max(1.8, spec.lineWidth * 0.55);
+        for (let i = 0; i <= steps; i++) {
+          grainSeed = (grainSeed * 1664525 + 1013904223) >>> 0;
+          const jx = (((grainSeed & 255) / 255) - 0.5) * spread * 2;
+          const jy = ((((grainSeed >> 8) & 255) / 255) - 0.5) * spread * 2;
+          const t = i / steps;
+          targetCtx.fillRect(fromPt.x + (toPt.x - fromPt.x) * t + jx, fromPt.y + (toPt.y - fromPt.y) * t + jy, 1.5, 1.5);
+        }
+      }
       targetCtx.restore();
+    }
+
+    function renderLivePreview(spec) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(buf, 0, 0);
+      if (!spec.eraser) {
+        ctx.save();
+        ctx.globalAlpha = spec.alpha;
+        ctx.drawImage(strokeCanvas, 0, 0);
+        ctx.restore();
+      }
     }
 
     canvas.addEventListener("pointerdown", (e) => {
@@ -475,17 +620,26 @@
       if (canvas.setPointerCapture) {
         try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
       }
-      applyStroke(bctx, lastPt, { x: lastPt.x + 0.1, y: lastPt.y + 0.1 });
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(buf, 0, 0);
+      const spec = getDrawToolStyle(drawTool, drawSize);
+      if (spec.eraser) {
+        paintSegment(bctx, lastPt, { x: lastPt.x + 0.1, y: lastPt.y + 0.1 }, spec);
+      } else {
+        sctx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+        paintSegment(sctx, lastPt, { x: lastPt.x + 0.1, y: lastPt.y + 0.1 }, spec);
+      }
+      renderLivePreview(spec);
     });
 
     canvas.addEventListener("pointermove", (e) => {
       if (!drawing || !lastPt) return;
       const pt = getPt(e);
-      applyStroke(bctx, lastPt, pt);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(buf, 0, 0);
+      const spec = getDrawToolStyle(drawTool, drawSize);
+      if (spec.eraser) {
+        paintSegment(bctx, lastPt, pt, spec);
+      } else {
+        paintSegment(sctx, lastPt, pt, spec);
+      }
+      renderLivePreview(spec);
       lastPt = pt;
     });
 
@@ -493,6 +647,15 @@
       if (!drawing) return;
       drawing = false;
       lastPt = null;
+      const spec = getDrawToolStyle(drawTool, drawSize);
+      if (!spec.eraser) {
+        bctx.save();
+        bctx.globalAlpha = spec.alpha;
+        bctx.drawImage(strokeCanvas, 0, 0);
+        bctx.restore();
+        sctx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+        renderLivePreview(spec);
+      }
       if (canvas.releasePointerCapture) {
         try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
       }
@@ -711,7 +874,8 @@
               <button type="button" class="mini-btn" data-insp-flip>Inverter</button>
               <button type="button" class="mini-btn" data-insp-scale="-0.1">−</button>
               <button type="button" class="mini-btn" data-insp-scale="0.1">+</button>
-              <button type="button" class="mini-btn" data-insp-front>Frente</button>
+              <button type="button" class="mini-btn" data-insp-back>Enviar para trás</button>
+              <button type="button" class="mini-btn" data-insp-front>Trazer para frente</button>
               <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
             </div>
           </div>
@@ -789,12 +953,28 @@
           </div>`
         : "";
 
+      const curFill = item.fillColor !== undefined ? item.fillColor : item.color || "#C84B31";
+      const curStroke = item.strokeColor || "#111827";
       const shapeColorPicker =
         item.kind === "shape"
-          ? `<div class="swatch-row swatch-compact">
+          ? `<span class="inspector-label">Preenchimento</span>
+             <div class="swatch-row swatch-compact">
+              ${HQArt.SHAPE_FILL_COLORS.map(
+                (dc) =>
+                  `<button type="button" class="swatch-btn swatch-sm${dc.id === "none" ? " swatch-none" : ""}${
+                    curFill === dc.id ? " is-active" : ""
+                  }"${dc.id === "none" ? "" : ` style="background:${dc.id}"`} title="${dc.name}" data-insp-shfill="${
+                    dc.id
+                  }" aria-label="${dc.name}"></button>`
+              ).join("")}
+            </div>
+            <span class="inspector-label">Borda</span>
+            <div class="swatch-row swatch-compact">
               ${HQArt.DRAW_COLORS.map(
                 (dc) =>
-                  `<button type="button" class="swatch-btn swatch-sm${item.color === dc.id ? " is-active" : ""}" style="background:${dc.id}" title="${dc.name}" data-insp-shcol="${dc.id}" aria-label="${dc.name}"></button>`
+                  `<button type="button" class="swatch-btn swatch-sm${curStroke === dc.id ? " is-active" : ""}" style="background:${
+                    dc.id
+                  }" title="Borda: ${dc.name}" data-insp-shstroke="${dc.id}" aria-label="Borda ${dc.name}"></button>`
               ).join("")}
             </div>`
           : "";
@@ -810,16 +990,27 @@
             <button type="button" class="mini-btn" data-insp-flip>Inverter</button>
             <button type="button" class="mini-btn" data-insp-scale="-0.12">Menor</button>
             <button type="button" class="mini-btn" data-insp-scale="0.12">Maior</button>
-            <button type="button" class="mini-btn" data-insp-front>Frente</button>
+            <button type="button" class="mini-btn" data-insp-back>Enviar para trás</button>
+            <button type="button" class="mini-btn" data-insp-front>Trazer para frente</button>
             <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
           </div>
         </div>
       `;
       bindCommonInspectorEvents(item);
-      inspectorEl.querySelectorAll("[data-insp-shcol]").forEach((b) => {
+      inspectorEl.querySelectorAll("[data-insp-shfill]").forEach((b) => {
         b.addEventListener("click", () => {
           pushUndoSnapshot();
-          item.color = b.getAttribute("data-insp-shcol");
+          item.fillColor = b.getAttribute("data-insp-shfill");
+          item.color = item.fillColor === "none" ? curStroke : item.fillColor;
+          persistState();
+          renderPanels();
+          renderInspector();
+        });
+      });
+      inspectorEl.querySelectorAll("[data-insp-shstroke]").forEach((b) => {
+        b.addEventListener("click", () => {
+          pushUndoSnapshot();
+          item.strokeColor = b.getAttribute("data-insp-shstroke");
           persistState();
           renderPanels();
           renderInspector();
@@ -853,6 +1044,13 @@
         )
         .join("");
 
+      const curFont = item.fontFamily || "sans";
+      const fontSelectHtml = `<select id="inspBubbleFont" class="mini-select" aria-label="Tipografia do texto">
+        ${HQArt.BUBBLE_FONTS.map(
+          (f) => `<option value="${f.id}"${curFont === f.id ? " selected" : ""}>${f.name}</option>`
+        ).join("")}
+      </select>`;
+
       const tailControls =
         item.type === "narrator"
           ? ""
@@ -869,12 +1067,15 @@
           <div class="inspector-controls-col">
             <div class="mini-pills">${typeBtns}</div>
             <div class="inspector-subrow">
-              <span class="inspector-label">Fonte</span>
+              <span class="inspector-label">Tipografia</span>
+              ${fontSelectHtml}
+              <span class="inspector-label">Tam.</span>
               <div class="mini-pills">${sizeBtns}</div>
               ${tailControls}
               <button type="button" class="mini-btn" data-insp-scale="-0.1">Menor</button>
               <button type="button" class="mini-btn" data-insp-scale="0.1">Maior</button>
-              <button type="button" class="mini-btn" data-insp-front>Frente</button>
+              <button type="button" class="mini-btn" data-insp-back>Enviar para trás</button>
+              <button type="button" class="mini-btn" data-insp-front>Trazer para frente</button>
               <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
             </div>
           </div>
@@ -893,6 +1094,15 @@
         persistState();
         renderPanels();
       });
+      const fontSel = document.getElementById("inspBubbleFont");
+      if (fontSel) {
+        fontSel.addEventListener("change", () => {
+          pushUndoSnapshot();
+          item.fontFamily = fontSel.value;
+          persistState();
+          renderPanels();
+        });
+      }
       inspectorEl.querySelectorAll("[data-insp-btype]").forEach((btn) => {
         btn.addEventListener("click", () => {
           pushUndoSnapshot();
@@ -944,6 +1154,21 @@
         renderPanels();
       });
     });
+    const btnBack = inspectorEl.querySelector("[data-insp-back]");
+    if (btnBack) {
+      btnBack.addEventListener("click", () => {
+        const panel = getActivePanel();
+        const idx = panel.items.findIndex((it) => it.id === item.id);
+        if (idx > 0) {
+          pushUndoSnapshot();
+          panel.items.splice(idx, 1);
+          panel.items.unshift(item);
+          persistState();
+          renderPanels();
+          showToast("Elemento enviado para trás");
+        }
+      });
+    }
     const btnFront = inspectorEl.querySelector("[data-insp-front]");
     if (btnFront) {
       btnFront.addEventListener("click", () => {
@@ -955,6 +1180,7 @@
           panel.items.push(item);
           persistState();
           renderPanels();
+          showToast("Elemento trazido para frente");
         }
       });
     }
@@ -1068,7 +1294,15 @@
         const isRobot = selectedChar.assetId === "robot";
         const skinPalette = isAnim ? HQArt.ANIMAL_COAT_COLORS : HQArt.SKIN_TONES;
         const skinLabel = isAnim ? "Cor da pelagem / casco" : isRobot ? "Cor do chassi" : "Tom de pele";
-        const outfitLabel = isAnim ? "Cor da coleira / casco" : "Cor da roupa";
+        const curOutfitStyle = selectedChar.outfitStyle || def.outfitStyle || "casual";
+        const curBottomStyle = selectedChar.bottomStyle || def.bottomStyle || (selectedChar.assetId === "girl" ? "skirt" : "pants");
+        const curPantsColor = selectedChar.pantsColor || def.pantsColor || "#1E293B";
+        const isDress = !isAnim && !isRobot && curOutfitStyle === "dress";
+        const outfitLabel = isAnim
+          ? "Cor da coleira / casco"
+          : isDress
+          ? "Cor do vestido"
+          : "Cor da roupa";
         const curAcc = selectedChar.accessories || {};
 
         sidebarBodyEl.innerHTML = `
@@ -1122,6 +1356,15 @@
                           `<button type="button" class="swatch-btn${selectedChar.hairColor === hc.id ? " is-active" : ""}" style="background:${hc.id}" title="${hc.name}" data-cust-hcolor="${hc.id}" aria-label="${hc.name}"></button>`
                       ).join("")}
                     </div>
+                  </div>
+                  <div class="custom-group">
+                    <span class="sidebar-label">Estilo de roupa / vestuário</span>
+                    <div class="expr-grid">
+                      ${HQArt.OUTFIT_STYLES.map(
+                        (os) =>
+                          `<button type="button" class="expr-pill${curOutfitStyle === os.id ? " is-active" : ""}" data-cust-ostyle="${os.id}">${os.name}</button>`
+                      ).join("")}
+                    </div>
                   </div>`
             }
 
@@ -1134,6 +1377,27 @@
                 ).join("")}
               </div>
             </div>
+
+            ${
+              isAnim || isRobot || isDress
+                ? ""
+                : `<div class="custom-group">
+                    <span class="sidebar-label">Calça / Saia</span>
+                    <div class="expr-grid">
+                      ${HQArt.BOTTOM_STYLES.map(
+                        (bs) =>
+                          `<button type="button" class="expr-pill${curBottomStyle === bs.id ? " is-active" : ""}" data-cust-bstyle="${bs.id}">${bs.name}</button>`
+                      ).join("")}
+                    </div>
+                    <span class="sidebar-label" style="margin-top:10px">Cor da calça / saia</span>
+                    <div class="swatch-row">
+                      ${HQArt.BOTTOM_COLORS.map(
+                        (bc) =>
+                          `<button type="button" class="swatch-btn${curPantsColor === bc.id ? " is-active" : ""}" style="background:${bc.id}" title="${bc.name}" data-cust-pcolor="${bc.id}" aria-label="${bc.name}"></button>`
+                      ).join("")}
+                    </div>
+                  </div>`
+            }
 
             <div class="custom-group">
               <span class="sidebar-label">Acessórios</span>
@@ -1183,10 +1447,31 @@
             persistState(); renderPanels(); renderSidebarBody();
           });
         });
+        sidebarBodyEl.querySelectorAll("[data-cust-ostyle]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.outfitStyle = b.getAttribute("data-cust-ostyle");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
         sidebarBodyEl.querySelectorAll("[data-cust-outfit]").forEach((b) => {
           b.addEventListener("click", () => {
             pushUndoSnapshot();
             selectedChar.outfitColor = b.getAttribute("data-cust-outfit");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-bstyle]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.bottomStyle = b.getAttribute("data-cust-bstyle");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-pcolor]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.pantsColor = b.getAttribute("data-cust-pcolor");
             persistState(); renderPanels(); renderSidebarBody();
           });
         });
@@ -1286,7 +1571,10 @@
             skinColor: def.skinColor,
             hairColor: def.hairColor,
             hairStyle: def.hairStyle,
+            outfitStyle: def.outfitStyle || "casual",
+            bottomStyle: def.bottomStyle || (charId === "girl" ? "skirt" : "pants"),
             outfitColor: def.outfitColor,
+            pantsColor: def.pantsColor || "#1E293B",
             accessories: cloneData(def.defaultAccessories || {}),
             x: xSlot,
             y: isAnim ? 270 : 215,
@@ -1315,7 +1603,7 @@
             ).join("")}
           </div>
         </div>
-        <span class="sidebar-group-heading">Objetos e Ícones (${HQArt.OBJECTS.length})</span>
+        <span class="sidebar-group-heading">Objetos, Móveis e Ícones (${HQArt.OBJECTS.length})</span>
         <div class="catalog-grid">
           ${HQArt.OBJECTS.map(
             (obj) => `
@@ -1349,15 +1637,16 @@
       sidebarBodyEl.querySelectorAll("[data-add-obj]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const objId = btn.getAttribute("data-add-obj");
+          const meta = HQArt.OBJECT_META && HQArt.OBJECT_META[objId];
           pushUndoSnapshot();
           const objCount = activePanel.items.filter((i) => i.kind === "object").length;
           const newItem = {
             id: nextId("obj"),
             kind: "object",
             assetId: objId,
-            x: Math.min(340, 200 + (objCount % 3) * 34),
-            y: 222 + (objCount % 2) * 24,
-            scale: 0.86,
+            x: meta ? 200 : Math.min(340, 200 + (objCount % 3) * 34),
+            y: meta ? meta.defaultY : 222 + (objCount % 2) * 24,
+            scale: meta ? meta.defaultScale : 0.86,
             flip: false,
           };
           activePanel.items.push(newItem);
@@ -1396,6 +1685,16 @@
             </div>
           </div>
 
+          <div class="sidebar-subblock">
+            <span class="sidebar-label">Tipografia / Fonte</span>
+            <div class="expr-grid">
+              ${HQArt.BUBBLE_FONTS.map(
+                (bf) =>
+                  `<button type="button" class="expr-pill${pendingBubbleDraft.fontFamily === bf.id ? " is-active" : ""}" style="font-family:${bf.sampleCss}" data-sb-font="${bf.id}">${bf.name}</button>`
+              ).join("")}
+            </div>
+          </div>
+
           <span class="sidebar-label">Escolha o estilo para inserir</span>
           <div class="catalog-grid">
             ${HQArt.BUBBLE_TYPES.map(
@@ -1425,12 +1724,22 @@
           renderSidebarBody();
         });
       });
+      sidebarBodyEl.querySelectorAll("[data-sb-font]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          pendingBubbleDraft.fontFamily = btn.getAttribute("data-sb-font");
+          renderSidebarBody();
+        });
+      });
       sidebarBodyEl.querySelectorAll("[data-add-bubble]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const btype = btn.getAttribute("data-add-bubble");
           const txt =
             (sbTa.value || "").trim() ||
-            (btype === "narrator" ? "Enquanto isso na escola..." : "Vamos checar essa informação!");
+            (btype === "narrator"
+              ? "Enquanto isso na escola..."
+              : btype === "whisper"
+              ? "Ei... não espalha sem checar!"
+              : "Vamos checar essa informação!");
           pushUndoSnapshot();
           const bCount = activePanel.items.filter((i) => i.kind === "bubble").length;
           const newItem = {
@@ -1439,6 +1748,7 @@
             type: btype,
             text: txt,
             fontSize: pendingBubbleDraft.fontSize,
+            fontFamily: pendingBubbleDraft.fontFamily || "sans",
             tailDir: pendingBubbleDraft.tailDir,
             x: btype === "narrator" ? 200 : bCount % 2 === 0 ? 190 : 210,
             y: btype === "narrator" ? 32 : 70 + (bCount % 2) * 44,
@@ -1457,9 +1767,9 @@
 
     if (activeSidebarTab === "draw") {
       const toolList = [
-        { id: "pencil", name: "Lápis", defSize: 3 },
-        { id: "pen", name: "Caneta", defSize: 6 },
-        { id: "brush", name: "Pincel", defSize: 15 },
+        { id: "pencil", name: "Lápis (2px)", defSize: 2 },
+        { id: "pen", name: "Caneta (4px)", defSize: 4 },
+        { id: "brush", name: "Pincel (10px)", defSize: 10 },
         { id: "eraser", name: "Borracha", defSize: 16 },
         { id: "move", name: "Mover", defSize: null },
       ];
@@ -1467,7 +1777,7 @@
       sidebarBodyEl.innerHTML = `
         <div class="customizer-stack">
           <div class="custom-group">
-            <span class="sidebar-label">Ferramenta no Quadro ${state.activePanelIndex + 1}</span>
+            <span class="sidebar-label">Ferramenta de desenho no Quadro ${state.activePanelIndex + 1}</span>
             <div class="expr-grid">
               ${toolList
                 .map(
@@ -1485,11 +1795,11 @@
               <span class="sidebar-label" style="margin-bottom:0">Espessura do traço</span>
               <span class="mono-val">${drawSize} px</span>
             </div>
-            <input id="drawSizeRange" type="range" min="2" max="28" value="${drawSize}" class="draw-range">
+            <input id="drawSizeRange" type="range" min="1" max="30" value="${drawSize}" class="draw-range">
           </div>
 
           <div class="custom-group">
-            <span class="sidebar-label">Paleta de cores</span>
+            <span class="sidebar-label">Cor do traço (desenho livre)</span>
             <div class="swatch-row">
               ${HQArt.DRAW_COLORS.map(
                 (dc) =>
@@ -1499,12 +1809,33 @@
           </div>
 
           <div class="custom-group">
-            <span class="sidebar-label">Formas geométricas (cor selecionada)</span>
+            <span class="sidebar-label">Formas geométricas — Preenchimento</span>
+            <div class="swatch-row swatch-compact" style="margin-bottom:10px">
+              ${HQArt.SHAPE_FILL_COLORS.map(
+                (dc) =>
+                  `<button type="button" class="swatch-btn swatch-sm${dc.id === "none" ? " swatch-none" : ""}${
+                    shapeFillColor === dc.id ? " is-active" : ""
+                  }"${dc.id === "none" ? "" : ` style="background:${dc.id}"`} title="${dc.name}" data-shape-fill="${
+                    dc.id
+                  }" aria-label="${dc.name}"></button>`
+              ).join("")}
+            </div>
+
+            <span class="sidebar-label">Formas geométricas — Cor da borda</span>
+            <div class="swatch-row swatch-compact" style="margin-bottom:10px">
+              ${HQArt.DRAW_COLORS.map(
+                (dc) =>
+                  `<button type="button" class="swatch-btn swatch-sm${shapeStrokeColor === dc.id ? " is-active" : ""}" style="background:${
+                    dc.id
+                  }" title="Borda: ${dc.name}" data-shape-stroke="${dc.id}" aria-label="Borda ${dc.name}"></button>`
+              ).join("")}
+            </div>
+
             <div class="catalog-grid">
               ${HQArt.SHAPES.map(
                 (sh) => `
                 <button type="button" class="catalog-card" data-add-shape="${sh.id}">
-                  <div class="catalog-thumb obj-thumb">${HQArt.buildThumbnailSvg("shape", sh.id, drawColor)}</div>
+                  <div class="catalog-thumb obj-thumb">${HQArt.buildThumbnailSvg("shape", sh.id, shapeFillColor, shapeStrokeColor)}</div>
                   <span class="catalog-name">${sh.name}</span>
                 </button>`
               ).join("")}
@@ -1540,11 +1871,36 @@
       sidebarBodyEl.querySelectorAll("[data-draw-color]").forEach((btn) => {
         btn.addEventListener("click", () => {
           drawColor = btn.getAttribute("data-draw-color");
-          if (drawTool === "eraser") drawTool = "pencil";
+          if (drawTool === "eraser" || drawTool === "move") drawTool = "pencil";
+          renderPanels();
+          renderInspector();
+          renderSidebarBody();
+        });
+      });
+
+      sidebarBodyEl.querySelectorAll("[data-shape-fill]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          shapeFillColor = btn.getAttribute("data-shape-fill");
           const sel = getSelectedItem();
           if (sel && sel.kind === "shape") {
             pushUndoSnapshot();
-            sel.color = drawColor;
+            sel.fillColor = shapeFillColor;
+            sel.color = shapeFillColor === "none" ? shapeStrokeColor : shapeFillColor;
+            persistState();
+          }
+          renderPanels();
+          renderInspector();
+          renderSidebarBody();
+        });
+      });
+
+      sidebarBodyEl.querySelectorAll("[data-shape-stroke]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          shapeStrokeColor = btn.getAttribute("data-shape-stroke");
+          const sel = getSelectedItem();
+          if (sel && sel.kind === "shape") {
+            pushUndoSnapshot();
+            sel.strokeColor = shapeStrokeColor;
             persistState();
           }
           renderPanels();
@@ -1561,7 +1917,9 @@
             id: nextId("shp"),
             kind: "shape",
             assetId: shapeId,
-            color: drawColor,
+            fillColor: shapeFillColor,
+            strokeColor: shapeStrokeColor,
+            color: shapeFillColor === "none" ? shapeStrokeColor : shapeFillColor,
             x: 200,
             y: 170,
             scale: 1,
@@ -1636,6 +1994,7 @@
         state.title = tpl.title;
         state.authors = tpl.authors;
         state.panelCount = tpl.panelCount;
+        state.layoutMode = HQExporter.normalizeLayoutMode(tpl.panelCount, "row");
         state.activePanelIndex = 0;
         state.selectedItemId = null;
         state.panels = tpl.panels.concat([createEmptyPanel("square")]);
@@ -1658,6 +2017,96 @@
   function closeThemesModal() {
     if (!themesModal) return;
     themesModal.hidden = true;
+  }
+
+  let pendingConfirmAction = null;
+
+  function openConfirmDialog({ title, message, confirmLabel, onConfirm }) {
+    if (!confirmModal || !confirmModalMessage || !btnConfirmOk) {
+      if (window.confirm(message)) onConfirm();
+      return;
+    }
+    if (confirmModalTitle) confirmModalTitle.textContent = title || "Confirmar ação";
+    confirmModalMessage.textContent = message || "";
+    btnConfirmOk.textContent = confirmLabel || "Confirmar";
+    pendingConfirmAction = onConfirm;
+    confirmModal.hidden = false;
+    btnConfirmCancel && btnConfirmCancel.focus();
+  }
+
+  function closeConfirmDialog() {
+    if (!confirmModal) return;
+    confirmModal.hidden = true;
+    pendingConfirmAction = null;
+  }
+
+  function clonePanelWithFreshIds(srcPanel) {
+    const copy = cloneData(srcPanel);
+    copy.items = (copy.items || []).map((it) => {
+      const prefix =
+        it.kind === "character"
+          ? "ch"
+          : it.kind === "object"
+          ? "obj"
+          : it.kind === "emoji"
+          ? "em"
+          : it.kind === "shape"
+          ? "shp"
+          : "bub";
+      return Object.assign({}, it, { id: nextId(prefix) });
+    });
+    return copy;
+  }
+
+  function duplicateActivePanel() {
+    const srcIdx = state.activePanelIndex;
+    const srcPanel = getActivePanel();
+    const cloned = clonePanelWithFreshIds(srcPanel);
+
+    if (state.panelCount < 4) {
+      pushUndoSnapshot();
+      const insertIdx = srcIdx + 1;
+      state.panels.splice(insertIdx, 0, cloned);
+      state.panels = state.panels.slice(0, 4);
+      state.panelCount += 1;
+      state.layoutMode = HQExporter.normalizeLayoutMode(state.panelCount, state.layoutMode);
+      state.activePanelIndex = insertIdx;
+      state.selectedItemId = null;
+      syncBufferFromState();
+      persistState();
+      renderAll();
+      showToast(`Quadro ${srcIdx + 1} duplicado para o Quadro ${insertIdx + 1}`);
+      return;
+    }
+
+    const targetIdx = (srcIdx + 1) % 4;
+    const targetPanel = state.panels[targetIdx];
+    const targetHasContent =
+      Boolean(targetPanel.items.length) || Boolean(targetPanel.drawingDataUrl) || targetPanel.sceneId !== "minimal";
+
+    const applyOverwrite = () => {
+      pushUndoSnapshot();
+      state.panels[targetIdx] = clonePanelWithFreshIds(srcPanel);
+      state.activePanelIndex = targetIdx;
+      state.selectedItemId = null;
+      syncBufferFromState();
+      persistState();
+      renderAll();
+      showToast(`Quadro ${srcIdx + 1} copiado para o Quadro ${targetIdx + 1}`);
+    };
+
+    if (targetHasContent) {
+      openConfirmDialog({
+        title: "Duplicar Quadro (4 quadros)",
+        message: `A tirinha já está no limite de 4 quadros. Deseja copiar o conteúdo do Quadro ${
+          srcIdx + 1
+        } substituindo o Quadro ${targetIdx + 1}?`,
+        confirmLabel: "Substituir Quadro",
+        onConfirm: applyOverwrite,
+      });
+    } else {
+      applyOverwrite();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1704,6 +2153,10 @@
       if (nextCount === state.panelCount) return;
       pushUndoSnapshot();
       state.panelCount = nextCount;
+      state.layoutMode =
+        nextCount === 4 && state.layoutMode === "row"
+          ? "grid"
+          : HQExporter.normalizeLayoutMode(nextCount, state.layoutMode);
       if (state.activePanelIndex >= nextCount) {
         state.activePanelIndex = nextCount - 1;
         state.selectedItemId = null;
@@ -1713,13 +2166,24 @@
     });
   });
 
+  if (btnDuplicatePanel) {
+    btnDuplicatePanel.addEventListener("click", duplicateActivePanel);
+  }
+
+  if (btnFocusMode) {
+    btnFocusMode.addEventListener("click", () => {
+      focusMode = !focusMode;
+      renderAll();
+    });
+  }
+
   sidebarTabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const nextTab = btn.getAttribute("data-sidebar-tab");
       activeSidebarTab = nextTab;
       if (nextTab === "draw" && drawTool === "move") {
         drawTool = "pencil";
-        drawSize = 3;
+        drawSize = 2;
       }
       renderSidebarTabs();
       renderPanels();
@@ -1734,31 +2198,71 @@
     btnClearPanel.addEventListener("click", () => {
       const p = getActivePanel();
       if (!p.items.length && !p.drawingDataUrl && p.sceneId === "minimal") return;
-      pushUndoSnapshot();
-      p.items = [];
-      p.drawingDataUrl = null;
-      p.sceneId = "minimal";
-      state.selectedItemId = null;
-      liveDrawBufferMap.delete(state.activePanelIndex);
-      persistState();
-      renderAll();
-      showToast(`Quadro ${state.activePanelIndex + 1} limpo`);
+      const clearNow = () => {
+        pushUndoSnapshot();
+        p.items = [];
+        p.drawingDataUrl = null;
+        p.sceneId = "minimal";
+        state.selectedItemId = null;
+        liveDrawBufferMap.delete(state.activePanelIndex);
+        persistState();
+        renderAll();
+        showToast(`Quadro ${state.activePanelIndex + 1} limpo`);
+      };
+      openConfirmDialog({
+        title: "Limpar Quadro",
+        message: `Deseja limpar todos os elementos, desenhos livres e cenário do Quadro ${state.activePanelIndex + 1}?`,
+        confirmLabel: "Limpar Quadro",
+        onConfirm: clearNow,
+      });
     });
   }
 
   if (btnNewStrip) {
     btnNewStrip.addEventListener("click", () => {
-      const hasAnyItems = state.panels.some((p) => p.items.length > 0 || p.drawingDataUrl);
-      if (hasAnyItems && !window.confirm("Deseja iniciar uma nova tirinha em branco?")) return;
-      pushUndoSnapshot();
-      state = createDefaultState();
-      state.title = "";
-      state.authors = "";
-      if (activeSidebarTab === "draw") drawTool = "move";
-      syncBufferFromState();
-      persistState();
-      renderAll();
-      showToast("Nova tirinha criada");
+      const hasAnyWork =
+        Boolean((state.title || "").trim()) ||
+        Boolean((state.authors || "").trim()) ||
+        state.panels.some((p) => p.items.length > 0 || p.drawingDataUrl);
+
+      const resetStrip = () => {
+        pushUndoSnapshot();
+        state = createDefaultState();
+        state.title = "";
+        state.authors = "";
+        focusMode = false;
+        if (activeSidebarTab === "draw") drawTool = "move";
+        syncBufferFromState();
+        persistState();
+        renderAll();
+        showToast("Nova tirinha criada");
+      };
+
+      if (hasAnyWork) {
+        openConfirmDialog({
+          title: "Nova Tirinha / Limpar Tudo",
+          message: "Tem certeza que deseja limpar tudo e iniciar uma nova tirinha em branco?",
+          confirmLabel: "Limpar Tudo e Começar Nova",
+          onConfirm: resetStrip,
+        });
+      } else {
+        resetStrip();
+      }
+    });
+  }
+
+  if (btnConfirmCancel) btnConfirmCancel.addEventListener("click", closeConfirmDialog);
+  if (btnConfirmClose) btnConfirmClose.addEventListener("click", closeConfirmDialog);
+  if (btnConfirmOk) {
+    btnConfirmOk.addEventListener("click", () => {
+      const fn = pendingConfirmAction;
+      closeConfirmDialog();
+      if (typeof fn === "function") fn();
+    });
+  }
+  if (confirmModal) {
+    confirmModal.addEventListener("click", (e) => {
+      if (e.target === confirmModal) closeConfirmDialog();
     });
   }
 
@@ -1797,8 +2301,15 @@
     } else if ((e.key === "Delete" || e.key === "Backspace") && !typing && state.selectedItemId) {
       e.preventDefault();
       removeSelectedElement();
-    } else if (e.key === "Escape" && themesModal && !themesModal.hidden) {
-      closeThemesModal();
+    } else if (e.key === "Escape") {
+      if (confirmModal && !confirmModal.hidden) {
+        closeConfirmDialog();
+      } else if (themesModal && !themesModal.hidden) {
+        closeThemesModal();
+      } else if (focusMode) {
+        focusMode = false;
+        renderAll();
+      }
     }
   });
 

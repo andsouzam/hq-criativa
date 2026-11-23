@@ -132,11 +132,29 @@
             <button type="button" class="seg-btn is-active" data-layout-count="3">3 quadros</button>
             <button type="button" class="seg-btn" data-layout-count="4">4 quadros</button>
           </div>
+          <span class="toolbar-label">Disposição</span>
+          <div id="layoutModeGroup" class="segmented" role="group" aria-label="Disposição dos quadros"></div>
         </div>
 
         <div class="toolbar-group">
           <span class="toolbar-label">Quadro selecionado</span>
           <div id="panelJumpTabs" class="panel-pills"></div>
+          <button type="button" id="btnDuplicatePanel" class="mini-btn" title="Copiar cenário, itens e desenho do quadro atual para um novo quadro">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Duplicar Quadro</span>
+          </button>
+          <button type="button" id="btnFocusMode" class="mini-btn" aria-pressed="false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+            <span>Modo Foco (Editar quadro ampliado)</span>
+          </button>
         </div>
       </div>
 
@@ -160,6 +178,22 @@
         <button type="button" id="btnCloseThemes" class="btn-modal-close">Fechar</button>
       </div>
       <div id="themesList" class="themes-grid"></div>
+    </div>
+  </div>
+
+  <div id="confirmModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-card-sm" role="alertdialog" aria-modal="true" aria-labelledby="confirmModalTitle" aria-describedby="confirmModalMessage">
+      <div class="modal-head">
+        <h2 id="confirmModalTitle">Confirmar ação</h2>
+        <button type="button" id="btnConfirmClose" class="btn-modal-close">Cancelar</button>
+      </div>
+      <div class="confirm-body">
+        <p id="confirmModalMessage" class="confirm-message"></p>
+        <div class="confirm-actions">
+          <button type="button" id="btnConfirmCancel" class="mini-btn">Cancelar</button>
+          <button type="button" id="btnConfirmOk" class="btn-danger-solid">Confirmar</button>
+        </div>
+      </div>
     </div>
   </div>
 
