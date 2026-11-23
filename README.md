@@ -1,13 +1,13 @@
 # HQ Criativa – Oficina de Letramento Digital
 
-Aplicativo web educacional, 100% no navegador (sem cadastro e sem dependências externas), para criação rápida de tirinhas em sala de aula com exportação direta em PNG pronto para envio ao Padlet.
+Desenvolvido por Simone Tavares. Aplicativo web educacional, 100% no navegador (sem cadastro e sem dependências externas), para criação rápida de tirinhas em sala de aula com exportação direta em PNG pronto para envio ao Padlet.
 
 ## Recursos principais
 - Layout de **2, 3 ou 4 quadros** com título e nomes dos autores editáveis
-- **13 cenários ilustrativos** em SVG (Casa: Quarto, Sala de estar, Cozinha · Escola: Sala de aula tradicional, Lab. de informática, Biblioteca, Pátio · Ar livre: Praça, Rua da cidade, Parque arborizado, Jardim · Estúdio: Espaço digital, Fundo branco)
+- **13 cenários ilustrativos** em SVG (Casa, Escola, Ar livre e Estúdio)
 - **11 personagens de corpo inteiro e meio corpo** (Crianças, Adultos, Robô/Algoritmo e Animais: gato, cachorro, coelho e tartaruga)
-- **Personalização completa de aparência e ações:** estilo de penteado, cor do cabelo, tom de pele/pelagem, cor da roupa, acessórios combináveis (óculos, chapéu, colar e relógio), 4 expressões faciais, 6 posições/poses (em pé, sentado, segurando, digitando, apontando, andando), inversão de direção e interação direta com objetos
-- **12 objetos do cotidiano e letramento digital** (Notebook, Celular, Tablet, Videogame, Controle remoto, Bolsa/Mochila, Caderno, Livro, Lupa, Placa Fake News, Cadeado e Lâmpada de ideia)
-- **4 tipos de balões** (fala normal, pensamento em nuvem, grito/alerta e caixa de narrador) arrastáveis e editáveis
-- Modal **Ideias de Tema** com os 3 eixos da oficina e rascunhos editáveis
-- Exportação em **PNG de alta resolução** sem marca d'água
+- **Personalização completa de aparência e ações:** 7 estilos de penteado ajustados à cabeça, cor do cabelo, tom de pele/pelagem, cor da roupa, acessórios (óculos, chapéu, colar e relógio), expressões faciais, posições/poses, inversão e interação com objetos
+- **22 objetos vetoriais e 12 emojis/reações** arrastáveis e redimensionáveis nos quadros
+- **Aba Desenhar:** desenho livre por quadro com Lápis, Caneta, Pincel e Borracha, paleta de 9 cores, controle de espessura e **5 formas geométricas** (círculo, quadrado, triângulo, seta e estrela)
+- **Controles rápidos de seleção** (`−`, `+`, `Inverter`, `Excluir`) direto no quadro + arraste livre em X e Y
+- Modal **Ideias de Tema** com os 3 eixos da oficina e exportação em **PNG de alta resolução** sem marca d'água

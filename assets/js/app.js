@@ -1,6 +1,9 @@
 (function () {
   const STORAGE_KEY = "hq_criativa_letramento_v2";
   const MAX_HISTORY = 30;
+  const PANEL_W = 400;
+  const PANEL_H = 340;
+  const DRAW_SCALE = 2; // 800 x 680 canvas de desenho livre
 
   let uidCounter = Date.now();
   function nextId(prefix) {
@@ -11,6 +14,7 @@
   function createEmptyPanel(sceneId) {
     return {
       sceneId: sceneId || "classroom",
+      drawingDataUrl: null,
       items: [],
     };
   }
@@ -39,7 +43,7 @@
   let undoStack = [];
   let activeSidebarTab = "scenes";
   let activeSceneFilter = "Todos";
-  let charSidebarMode = "add"; // "add" | "customize"
+  let charSidebarMode = "add";
   let pendingExpression = "happy";
   let pendingPose = "standing";
   let pendingFraming = "full";
@@ -49,6 +53,11 @@
     fontSize: 15,
     tailDir: "left",
   };
+
+  // Estado da aba Desenhar
+  let drawTool = "pencil"; // "move" | "pencil" | "pen" | "brush" | "eraser"
+  let drawColor = "#111827";
+  let drawSize = 4;
 
   // DOM
   const titleInput = document.getElementById("hqTitleInput");
@@ -122,6 +131,7 @@
   function undo() {
     if (!undoStack.length) return;
     state = undoStack.pop();
+    syncBufferFromState();
     persistState();
     renderAll();
     showToast("Ação desfeita");
@@ -149,11 +159,155 @@
       const o = HQArt.OBJECTS.find((x) => x.id === item.assetId);
       return o ? o.name : "Objeto";
     }
+    if (item.kind === "emoji") return `Reação ${item.emoji || ""}`;
+    if (item.kind === "shape") {
+      const s = HQArt.SHAPES.find((x) => x.id === item.assetId);
+      return s ? `Forma: ${s.name}` : "Forma";
+    }
     return "Balão";
   }
 
+  function isDrawingActive() {
+    return activeSidebarTab === "draw" && drawTool !== "move";
+  }
+
   // ---------------------------------------------------------------------------
-  // RENDERING
+  // SELECTION BOX GEOMETRY + INCREMENTAL OVERLAY SYNC (SEM DESTRUIR O SVG!)
+  // ---------------------------------------------------------------------------
+  function getItemBox(item) {
+    const sc = Number(item.scale) || 1;
+    let hw = 44 * sc;
+    let hh = 44 * sc;
+    let offsetY = 0;
+    if (item.kind === "character") {
+      const isAnim = Boolean(
+        item.isAnimal ||
+          (HQArt.CHARACTER_DEFAULTS[item.assetId] && HQArt.CHARACTER_DEFAULTS[item.assetId].isAnimal)
+      );
+      if (isAnim) {
+        hw = 46 * sc;
+        hh = 68 * sc;
+        offsetY = -6 * sc;
+      } else {
+        hw = 52 * sc;
+        hh = item.framing === "half" ? 102 * sc : 128 * sc;
+        offsetY = item.framing === "half" ? -12 * sc : 10 * sc;
+      }
+    } else if (item.kind === "bubble") {
+      const info = HQArt.renderBubbleMarkup(item);
+      hw = (info.boxW / 2 + 8) * sc;
+      hh = (info.boxH / 2 + 12) * sc;
+      offsetY = 6 * sc;
+    } else if (item.kind === "emoji") {
+      hw = 30 * sc;
+      hh = 30 * sc;
+      offsetY = 0;
+    } else if (item.kind === "shape") {
+      hw = 36 * sc;
+      hh = 36 * sc;
+      offsetY = 0;
+    }
+    const x = item.x - hw;
+    const y = item.y + offsetY - hh;
+    const w = hw * 2;
+    const h = hh * 2;
+    return { x, y, w, h };
+  }
+
+  function syncSelectionOverlay() {
+    const frames = comicPanelsEl ? comicPanelsEl.querySelectorAll(".comic-panel-frame") : [];
+    frames.forEach((frame, idx) => {
+      const isActive = idx === state.activePanelIndex;
+      frame.classList.toggle("is-active", isActive);
+      const svg = frame.querySelector("svg.comic-panel-svg");
+      if (svg) {
+        const oldBox = svg.querySelector(".selection-halo-rect");
+        if (oldBox) oldBox.remove();
+      }
+      const oldTb = frame.querySelector(".selection-quick-bar");
+      if (oldTb) oldTb.remove();
+
+      if (!isActive || !state.selectedItemId || isDrawingActive()) return;
+      const sel = state.panels[idx].items.find((it) => it.id === state.selectedItemId);
+      if (!sel || !svg) return;
+
+      const box = getItemBox(sel);
+      const rectEl = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rectEl.setAttribute("class", "selection-halo-rect");
+      rectEl.setAttribute("x", Math.round(box.x));
+      rectEl.setAttribute("y", Math.round(box.y));
+      rectEl.setAttribute("width", Math.round(box.w));
+      rectEl.setAttribute("height", Math.round(box.h));
+      rectEl.setAttribute("rx", "6");
+      rectEl.setAttribute("fill", "none");
+      rectEl.setAttribute("stroke", "#C84B31");
+      rectEl.setAttribute("stroke-width", "2.2");
+      rectEl.setAttribute("stroke-dasharray", "6 4");
+      rectEl.setAttribute("pointer-events", "none");
+      svg.appendChild(rectEl);
+
+      // Controles rápidos junto à borda de seleção: Diminuir (-), Aumentar (+), Inverter, Excluir
+      const bar = document.createElement("div");
+      bar.className = "selection-quick-bar";
+      const pctX = Math.min(82, Math.max(18, ((box.x + box.w / 2) / PANEL_W) * 100));
+      const topAnchor = box.y > 46 ? ((box.y - 6) / PANEL_H) * 100 : ((box.y + box.h + 32) / PANEL_H) * 100;
+      const pctY = Math.min(92, Math.max(8, topAnchor));
+      bar.style.left = `${pctX.toFixed(1)}%`;
+      bar.style.top = `${pctY.toFixed(1)}%`;
+
+      bar.innerHTML = `
+        <button type="button" class="sq-btn" data-sq="down" title="Diminuir tamanho" aria-label="Diminuir tamanho">−</button>
+        <button type="button" class="sq-btn" data-sq="up" title="Aumentar tamanho" aria-label="Aumentar tamanho">+</button>
+        <button type="button" class="sq-btn" data-sq="flip" title="Inverter direção" aria-label="Inverter direção">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/></svg>
+        </button>
+        <button type="button" class="sq-btn is-danger" data-sq="delete" title="Excluir item" aria-label="Excluir item">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        </button>
+      `;
+
+      bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      bar.querySelectorAll("[data-sq]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const act = btn.getAttribute("data-sq");
+          if (act === "down" || act === "up") {
+            pushUndoSnapshot();
+            const delta = act === "up" ? 0.1 : -0.1;
+            sel.scale = Number(Math.min(1.8, Math.max(0.45, (Number(sel.scale) || 1) + delta)).toFixed(2));
+            updateLiveItemTransform(svg, sel);
+            syncSelectionOverlay();
+            persistState();
+          } else if (act === "flip") {
+            pushUndoSnapshot();
+            sel.flip = !sel.flip;
+            updateLiveItemTransform(svg, sel);
+            syncSelectionOverlay();
+            persistState();
+          } else if (act === "delete") {
+            removeSelectedElement();
+          }
+        });
+      });
+
+      frame.appendChild(bar);
+    });
+  }
+
+  function updateLiveItemTransform(svg, item) {
+    if (!svg || !item) return;
+    const g = svg.querySelector(`[data-item-id="${CSS.escape(item.id)}"]`);
+    if (!g) return;
+    const sc = Number(item.scale) || 1;
+    const flip = item.flip ? -1 : 1;
+    g.setAttribute(
+      "transform",
+      `translate(${Math.round(item.x)} ${Math.round(item.y)}) scale(${(sc * flip).toFixed(3)} ${sc.toFixed(3)})`
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // RENDERING PANELS & CANVAS DRAWING OVERLAY
   // ---------------------------------------------------------------------------
   function renderHeaderInputs() {
     if (titleInput && titleInput.value !== state.title) titleInput.value = state.title || "";
@@ -182,7 +336,9 @@
         renderPanels();
         renderPanelJumpTabs();
         renderInspector();
-        if (activeSidebarTab === "scenes" || activeSidebarTab === "characters") renderSidebarBody();
+        if (activeSidebarTab === "scenes" || activeSidebarTab === "characters" || activeSidebarTab === "draw") {
+          renderSidebarBody();
+        }
       });
       panelJumpTabs.appendChild(btn);
     }
@@ -193,12 +349,14 @@
     comicPanelsEl.dataset.count = String(state.panelCount);
     comicPanelsEl.innerHTML = "";
 
+    const drawingMode = isDrawingActive();
+
     for (let i = 0; i < state.panelCount; i++) {
       const panel = state.panels[i];
       const isActive = i === state.activePanelIndex;
 
       const card = document.createElement("div");
-      card.className = "comic-panel-frame" + (isActive ? " is-active" : "");
+      card.className = "comic-panel-frame" + (isActive ? " is-active" : "") + (drawingMode && isActive ? " is-drawing" : "");
       card.dataset.panelIndex = String(i);
 
       const badge = document.createElement("span");
@@ -207,54 +365,144 @@
       card.appendChild(badge);
 
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("viewBox", "0 0 400 340");
+      svg.setAttribute("viewBox", `0 0 ${PANEL_W} ${PANEL_H}`);
       svg.setAttribute("class", "comic-panel-svg");
       svg.setAttribute("role", "img");
       svg.setAttribute("aria-label", `Quadro ${i + 1} da tirinha`);
-
-      const innerMarkup = HQArt.renderPanelInnerSvg(panel);
-      let selectionBox = "";
-      if (isActive && state.selectedItemId) {
-        const sel = panel.items.find((it) => it.id === state.selectedItemId);
-        if (sel) selectionBox = buildSelectionHalo(sel);
-      }
-      svg.innerHTML = innerMarkup + selectionBox;
-
-      attachPanelPointerHandlers(svg, i);
+      svg.innerHTML = HQArt.renderPanelInnerSvg(panel, !(drawingMode && isActive));
       card.appendChild(svg);
+
+      if (drawingMode && isActive) {
+        const drawCanvas = createLiveDrawingCanvas(i, panel);
+        card.appendChild(drawCanvas);
+      } else {
+        attachPanelPointerHandlers(svg, i);
+      }
+
       comicPanelsEl.appendChild(card);
     }
+
+    syncSelectionOverlay();
   }
 
-  function buildSelectionHalo(item) {
-    const sc = Number(item.scale) || 1;
-    let hw = 48 * sc;
-    let hh = 48 * sc;
-    let offsetY = 0;
-    if (item.kind === "character") {
-      const isAnim = Boolean(
-        item.isAnimal || (HQArt.CHARACTER_DEFAULTS[item.assetId] && HQArt.CHARACTER_DEFAULTS[item.assetId].isAnimal)
-      );
-      if (isAnim) {
-        hw = 48 * sc;
-        hh = 70 * sc;
-        offsetY = -6 * sc;
-      } else {
-        hw = 54 * sc;
-        hh = item.framing === "half" ? 104 * sc : 132 * sc;
-        offsetY = item.framing === "half" ? -12 * sc : 12 * sc;
+  // Cache síncrono em memória para evitar atraso de onload ao alternar Lápis <-> Borracha
+  const liveDrawBufferMap = new Map();
+
+  function getOrCreateDrawBuffer(panelIndex, panel) {
+    let buf = liveDrawBufferMap.get(panelIndex);
+    if (!buf) {
+      buf = document.createElement("canvas");
+      buf.width = PANEL_W * DRAW_SCALE;
+      buf.height = PANEL_H * DRAW_SCALE;
+      liveDrawBufferMap.set(panelIndex, buf);
+      if (panel.drawingDataUrl) {
+        const img = new Image();
+        img.onload = () => {
+          buf.getContext("2d").drawImage(img, 0, 0, buf.width, buf.height);
+        };
+        img.src = panel.drawingDataUrl;
       }
-    } else if (item.kind === "bubble") {
-      const info = HQArt.renderBubbleMarkup(item);
-      hw = (info.boxW / 2 + 8) * sc;
-      hh = (info.boxH / 2 + 12) * sc;
-      offsetY = 6 * sc;
     }
-    const x = Math.round(item.x - hw);
-    const y = Math.round(item.y + offsetY - hh);
-    const w = Math.round(hw * 2);
-    const h = Math.round(hh * 2);
-    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="#C84B31" stroke-width="2.2" stroke-dasharray="6 4" pointer-events="none"/>`;
+    return buf;
+  }
+
+  function syncBufferFromState() {
+    liveDrawBufferMap.clear();
+  }
+
+  function createLiveDrawingCanvas(panelIndex, panel) {
+    const buf = getOrCreateDrawBuffer(panelIndex, panel);
+    const canvas = document.createElement("canvas");
+    canvas.width = PANEL_W * DRAW_SCALE;
+    canvas.height = PANEL_H * DRAW_SCALE;
+    canvas.className = "panel-draw-canvas" + (drawTool === "eraser" ? " is-eraser" : "");
+    const ctx = canvas.getContext("2d");
+    const bctx = buf.getContext("2d");
+
+    ctx.drawImage(buf, 0, 0);
+    if (panel.drawingDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        if (!liveDrawBufferMap.get(panelIndex)) return;
+        // Só repinta se o canvas estiver limpo no boot inicial (loadSavedState)
+        if (!canvas.dataset.dirty && !bctx.__hasLiveStroke) {
+          bctx.clearRect(0, 0, buf.width, buf.height);
+          bctx.drawImage(img, 0, 0, buf.width, buf.height);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(buf, 0, 0);
+        }
+      };
+      img.src = panel.drawingDataUrl;
+    }
+
+    let drawing = false;
+    let lastPt = null;
+
+    function getPt(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+        y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+      };
+    }
+
+    function applyStroke(targetCtx, fromPt, toPt) {
+      targetCtx.save();
+      targetCtx.lineCap = "round";
+      targetCtx.lineJoin = "round";
+      targetCtx.lineWidth = drawSize * DRAW_SCALE;
+      if (drawTool === "eraser") {
+        targetCtx.globalCompositeOperation = "destination-out";
+        targetCtx.strokeStyle = "rgba(0,0,0,1)";
+      } else {
+        targetCtx.globalCompositeOperation = "source-over";
+        targetCtx.strokeStyle = drawColor;
+      }
+      targetCtx.beginPath();
+      targetCtx.moveTo(fromPt.x, fromPt.y);
+      targetCtx.lineTo(toPt.x, toPt.y);
+      targetCtx.stroke();
+      targetCtx.restore();
+    }
+
+    canvas.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      pushUndoSnapshot();
+      drawing = true;
+      canvas.dataset.dirty = "1";
+      bctx.__hasLiveStroke = true;
+      lastPt = getPt(e);
+      if (canvas.setPointerCapture) {
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+      applyStroke(bctx, lastPt, { x: lastPt.x + 0.1, y: lastPt.y + 0.1 });
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(buf, 0, 0);
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!drawing || !lastPt) return;
+      const pt = getPt(e);
+      applyStroke(bctx, lastPt, pt);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(buf, 0, 0);
+      lastPt = pt;
+    });
+
+    const finishStroke = (e) => {
+      if (!drawing) return;
+      drawing = false;
+      lastPt = null;
+      if (canvas.releasePointerCapture) {
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
+      panel.drawingDataUrl = buf.toDataURL("image/png");
+      persistState();
+    };
+
+    canvas.addEventListener("pointerup", finishStroke);
+    canvas.addEventListener("pointercancel", finishStroke);
+    return canvas;
   }
 
   function attachPanelPointerHandlers(svg, panelIndex) {
@@ -268,7 +516,7 @@
       if (!targetGroup) {
         state.selectedItemId = null;
         if (prevPanel !== panelIndex) persistState();
-        renderPanels();
+        syncSelectionOverlay();
         renderPanelJumpTabs();
         renderInspector();
         if (activeSidebarTab === "scenes" || activeSidebarTab === "characters") renderSidebarBody();
@@ -280,12 +528,13 @@
       const item = panel.items.find((it) => it.id === itemId);
       if (!item) return;
 
+      e.preventDefault();
       state.selectedItemId = itemId;
       pushUndoSnapshot();
 
       const rect = svg.getBoundingClientRect();
-      const startSvgX = ((e.clientX - rect.left) / rect.width) * 400;
-      const startSvgY = ((e.clientY - rect.top) / rect.height) * 340;
+      const startSvgX = ((e.clientX - rect.left) / rect.width) * PANEL_W;
+      const startSvgY = ((e.clientY - rect.top) / rect.height) * PANEL_H;
       dragging = {
         item,
         svg,
@@ -297,7 +546,8 @@
         try { svg.setPointerCapture(e.pointerId); } catch (_) {}
       }
 
-      renderPanels();
+      // ATUALIZA SOMENTE OVERLAY / INSPECTOR SEM DESTRUIR O SVG ATIVO!
+      syncSelectionOverlay();
       renderPanelJumpTabs();
       renderInspector();
       if (activeSidebarTab === "characters") renderSidebarBody();
@@ -306,23 +556,14 @@
     svg.addEventListener("pointermove", (e) => {
       if (!dragging) return;
       const rect = dragging.svg.getBoundingClientRect();
-      const curX = ((e.clientX - rect.left) / rect.width) * 400;
-      const curY = ((e.clientY - rect.top) / rect.height) * 340;
-      dragging.item.x = Math.min(378, Math.max(22, curX + dragging.offsetX));
-      dragging.item.y = Math.min(322, Math.max(22, curY + dragging.offsetY));
+      const curX = ((e.clientX - rect.left) / rect.width) * PANEL_W;
+      const curY = ((e.clientY - rect.top) / rect.height) * PANEL_H;
+      dragging.item.x = Math.min(PANEL_W - 10, Math.max(10, curX + dragging.offsetX));
+      dragging.item.y = Math.min(PANEL_H - 10, Math.max(10, curY + dragging.offsetY));
       dragging.moved = true;
 
-      const liveG = dragging.svg.querySelector(`[data-item-id="${CSS.escape(dragging.item.id)}"]`);
-      if (liveG) {
-        const sc = Number(dragging.item.scale) || 1;
-        const flip = dragging.item.flip ? -1 : 1;
-        liveG.setAttribute(
-          "transform",
-          `translate(${Math.round(dragging.item.x)} ${Math.round(dragging.item.y)}) scale(${(
-            sc * flip
-          ).toFixed(3)} ${sc.toFixed(3)})`
-        );
-      }
+      updateLiveItemTransform(dragging.svg, dragging.item);
+      syncSelectionOverlay();
     });
 
     const endDrag = (e) => {
@@ -337,7 +578,7 @@
       if (svg.releasePointerCapture) {
         try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
       }
-      renderPanels();
+      syncSelectionOverlay();
     };
 
     svg.addEventListener("pointerup", endDrag);
@@ -370,7 +611,6 @@
     objItem.y = res.objY;
     objItem.flip = res.objFlip;
 
-    // Garante que o objeto interagido fique à frente das mãos do personagem
     const panel = getActivePanel();
     const cIdx = panel.items.findIndex((i) => i.id === charItem.id);
     const oIdx = panel.items.findIndex((i) => i.id === objItem.id);
@@ -391,12 +631,35 @@
     const panel = getActivePanel();
     const panelNum = state.activePanelIndex + 1;
 
+    if (isDrawingActive()) {
+      inspectorEl.classList.remove("has-selection");
+      inspectorEl.innerHTML = `
+        <div class="inspector-row">
+          <div class="inspector-group">
+            <span class="inspector-badge">Desenhando no Quadro ${panelNum}</span>
+            <span class="inspector-hint">Desenhe livremente sobre o quadro ou clique em "Mover itens" para arrastar personagens e formas.</span>
+          </div>
+          <button type="button" class="mini-btn is-navy" id="btnExitDrawQuick">Mover itens</button>
+        </div>
+      `;
+      const btnEx = document.getElementById("btnExitDrawQuick");
+      if (btnEx) {
+        btnEx.addEventListener("click", () => {
+          drawTool = "move";
+          renderPanels();
+          renderInspector();
+          renderSidebarBody();
+        });
+      }
+      return;
+    }
+
     if (!item) {
       inspectorEl.classList.remove("has-selection");
       inspectorEl.innerHTML = `
         <div class="inspector-idle">
           <span class="inspector-badge">Quadro ${panelNum} ativo</span>
-          <span class="inspector-hint">Clique e arraste personagens, objetos ou balões livremente no quadro.</span>
+          <span class="inspector-hint">Arraste personagens, objetos, emojis, formas ou balões nos eixos X e Y. Clique para redimensionar.</span>
         </div>
       `;
       return;
@@ -446,8 +709,8 @@
               ${framingToggle}
               <button type="button" class="mini-btn is-navy" id="btnInspCustomize">Visual / Acessórios</button>
               <button type="button" class="mini-btn" data-insp-flip>Inverter</button>
-              <button type="button" class="mini-btn" data-insp-scale="-0.08">A-</button>
-              <button type="button" class="mini-btn" data-insp-scale="0.08">A+</button>
+              <button type="button" class="mini-btn" data-insp-scale="-0.1">−</button>
+              <button type="button" class="mini-btn" data-insp-scale="0.1">+</button>
               <button type="button" class="mini-btn" data-insp-front>Frente</button>
               <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
             </div>
@@ -513,8 +776,8 @@
       return;
     }
 
-    if (item.kind === "object") {
-      const panelChars = panel.items.filter((i) => i.kind === "character");
+    if (item.kind === "object" || item.kind === "emoji" || item.kind === "shape") {
+      const panelChars = item.kind === "object" ? panel.items.filter((i) => i.kind === "character") : [];
       const charInteractHtml = panelChars.length
         ? `<div class="inspector-interact">
             <select id="inspCharSelect" class="mini-select" aria-label="Escolher personagem para segurar ou usar">
@@ -526,11 +789,22 @@
           </div>`
         : "";
 
+      const shapeColorPicker =
+        item.kind === "shape"
+          ? `<div class="swatch-row swatch-compact">
+              ${HQArt.DRAW_COLORS.map(
+                (dc) =>
+                  `<button type="button" class="swatch-btn swatch-sm${item.color === dc.id ? " is-active" : ""}" style="background:${dc.id}" title="${dc.name}" data-insp-shcol="${dc.id}" aria-label="${dc.name}"></button>`
+              ).join("")}
+            </div>`
+          : "";
+
       inspectorEl.innerHTML = `
         <div class="inspector-row">
           <div class="inspector-group">
             <span class="inspector-badge">${HQArt.escapeXml(getItemLabel(item))}</span>
             ${charInteractHtml}
+            ${shapeColorPicker}
           </div>
           <div class="inspector-actions">
             <button type="button" class="mini-btn" data-insp-flip>Inverter</button>
@@ -542,6 +816,15 @@
         </div>
       `;
       bindCommonInspectorEvents(item);
+      inspectorEl.querySelectorAll("[data-insp-shcol]").forEach((b) => {
+        b.addEventListener("click", () => {
+          pushUndoSnapshot();
+          item.color = b.getAttribute("data-insp-shcol");
+          persistState();
+          renderPanels();
+          renderInspector();
+        });
+      });
       const btnGive = document.getElementById("btnInspCharUse");
       const selCh = document.getElementById("inspCharSelect");
       if (btnGive && selCh) {
@@ -589,6 +872,8 @@
               <span class="inspector-label">Fonte</span>
               <div class="mini-pills">${sizeBtns}</div>
               ${tailControls}
+              <button type="button" class="mini-btn" data-insp-scale="-0.1">Menor</button>
+              <button type="button" class="mini-btn" data-insp-scale="0.1">Maior</button>
               <button type="button" class="mini-btn" data-insp-front>Frente</button>
               <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
             </div>
@@ -653,7 +938,7 @@
       btn.addEventListener("click", () => {
         pushUndoSnapshot();
         const delta = Number(btn.getAttribute("data-insp-scale"));
-        const nextScale = Math.min(1.6, Math.max(0.5, (Number(item.scale) || 1) + delta));
+        const nextScale = Math.min(1.8, Math.max(0.45, (Number(item.scale) || 1) + delta));
         item.scale = Number(nextScale.toFixed(2));
         persistState();
         renderPanels();
@@ -675,9 +960,7 @@
     }
     const btnDel = inspectorEl.querySelector("[data-insp-delete]");
     if (btnDel) {
-      btnDel.addEventListener("click", () => {
-        removeSelectedElement();
-      });
+      btnDel.addEventListener("click", removeSelectedElement);
     }
   }
 
@@ -696,7 +979,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // SIDEBAR CATALOGS & CUSTOMIZER
+  // SIDEBAR CATALOGS, EMOJIS, DESENHO & FORMAS
   // ---------------------------------------------------------------------------
   function renderSidebarTabs() {
     sidebarTabButtons.forEach((btn) => {
@@ -766,9 +1049,7 @@
     if (activeSidebarTab === "characters") {
       const sel = getSelectedItem();
       const selectedChar = sel && sel.kind === "character" ? sel : null;
-      if (!selectedChar && charSidebarMode === "customize") {
-        charSidebarMode = "add";
-      }
+      if (!selectedChar && charSidebarMode === "customize") charSidebarMode = "add";
 
       const modeSwitch = `
         <div class="sidebar-subblock">
@@ -921,7 +1202,6 @@
         return;
       }
 
-      // Modo Adicionar Personagem (Crianças, Adultos, Tecnologia, Animais)
       const groups = ["Crianças", "Adultos", "Tecnologia", "Animais"];
       const groupHtml = groups
         .map((grp) => {
@@ -1026,7 +1306,16 @@
 
     if (activeSidebarTab === "objects") {
       sidebarBodyEl.innerHTML = `
-        <p class="sidebar-hint">Clique em um objeto para adicionar ao <strong>Quadro ${state.activePanelIndex + 1}</strong> e arraste ou conecte a um personagem.</p>
+        <div class="sidebar-subblock">
+          <span class="sidebar-group-heading">Emojis e Reações (${HQArt.EMOJIS.length})</span>
+          <div class="emoji-grid">
+            ${HQArt.EMOJIS.map(
+              (em) =>
+                `<button type="button" class="emoji-card" data-add-emoji="${em.id}" title="${em.name}" aria-label="${em.name}">${em.id}</button>`
+            ).join("")}
+          </div>
+        </div>
+        <span class="sidebar-group-heading">Objetos e Ícones (${HQArt.OBJECTS.length})</span>
         <div class="catalog-grid">
           ${HQArt.OBJECTS.map(
             (obj) => `
@@ -1037,6 +1326,26 @@
           ).join("")}
         </div>
       `;
+      sidebarBodyEl.querySelectorAll("[data-add-emoji]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const emojiChar = btn.getAttribute("data-add-emoji");
+          pushUndoSnapshot();
+          const newItem = {
+            id: nextId("em"),
+            kind: "emoji",
+            emoji: emojiChar,
+            x: 200,
+            y: 112,
+            scale: 1,
+            flip: false,
+          };
+          activePanel.items.push(newItem);
+          state.selectedItemId = newItem.id;
+          persistState();
+          renderPanels();
+          renderInspector();
+        });
+      });
       sidebarBodyEl.querySelectorAll("[data-add-obj]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const objId = btn.getAttribute("data-add-obj");
@@ -1143,6 +1452,144 @@
           renderInspector();
         });
       });
+      return;
+    }
+
+    if (activeSidebarTab === "draw") {
+      const toolList = [
+        { id: "pencil", name: "Lápis", defSize: 3 },
+        { id: "pen", name: "Caneta", defSize: 6 },
+        { id: "brush", name: "Pincel", defSize: 15 },
+        { id: "eraser", name: "Borracha", defSize: 16 },
+        { id: "move", name: "Mover", defSize: null },
+      ];
+
+      sidebarBodyEl.innerHTML = `
+        <div class="customizer-stack">
+          <div class="custom-group">
+            <span class="sidebar-label">Ferramenta no Quadro ${state.activePanelIndex + 1}</span>
+            <div class="expr-grid">
+              ${toolList
+                .map(
+                  (tl) =>
+                    `<button type="button" class="expr-pill${drawTool === tl.id ? " is-active" : ""}" data-draw-tool="${tl.id}"${
+                      tl.defSize ? ` data-def-size="${tl.defSize}"` : ""
+                    }>${tl.name}</button>`
+                )
+                .join("")}
+            </div>
+          </div>
+
+          <div class="custom-group">
+            <div class="range-head">
+              <span class="sidebar-label" style="margin-bottom:0">Espessura do traço</span>
+              <span class="mono-val">${drawSize} px</span>
+            </div>
+            <input id="drawSizeRange" type="range" min="2" max="28" value="${drawSize}" class="draw-range">
+          </div>
+
+          <div class="custom-group">
+            <span class="sidebar-label">Paleta de cores</span>
+            <div class="swatch-row">
+              ${HQArt.DRAW_COLORS.map(
+                (dc) =>
+                  `<button type="button" class="swatch-btn${drawColor === dc.id ? " is-active" : ""}" style="background:${dc.id}" title="${dc.name}" data-draw-color="${dc.id}" aria-label="${dc.name}"></button>`
+              ).join("")}
+            </div>
+          </div>
+
+          <div class="custom-group">
+            <span class="sidebar-label">Formas geométricas (cor selecionada)</span>
+            <div class="catalog-grid">
+              ${HQArt.SHAPES.map(
+                (sh) => `
+                <button type="button" class="catalog-card" data-add-shape="${sh.id}">
+                  <div class="catalog-thumb obj-thumb">${HQArt.buildThumbnailSvg("shape", sh.id, drawColor)}</div>
+                  <span class="catalog-name">${sh.name}</span>
+                </button>`
+              ).join("")}
+            </div>
+          </div>
+
+          <button type="button" class="mini-btn is-danger" id="btnClearDrawingOnly" style="justify-content:center;width:100%;padding:8px">
+            Apagar traços livres deste quadro
+          </button>
+        </div>
+      `;
+
+      sidebarBodyEl.querySelectorAll("[data-draw-tool]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          drawTool = btn.getAttribute("data-draw-tool");
+          const ds = btn.getAttribute("data-def-size");
+          if (ds) drawSize = Number(ds);
+          renderPanels();
+          renderInspector();
+          renderSidebarBody();
+        });
+      });
+
+      const rangeEl = document.getElementById("drawSizeRange");
+      const valEl = sidebarBodyEl.querySelector(".mono-val");
+      if (rangeEl) {
+        rangeEl.addEventListener("input", () => {
+          drawSize = Number(rangeEl.value);
+          if (valEl) valEl.textContent = `${drawSize} px`;
+        });
+      }
+
+      sidebarBodyEl.querySelectorAll("[data-draw-color]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          drawColor = btn.getAttribute("data-draw-color");
+          if (drawTool === "eraser") drawTool = "pencil";
+          const sel = getSelectedItem();
+          if (sel && sel.kind === "shape") {
+            pushUndoSnapshot();
+            sel.color = drawColor;
+            persistState();
+          }
+          renderPanels();
+          renderInspector();
+          renderSidebarBody();
+        });
+      });
+
+      sidebarBodyEl.querySelectorAll("[data-add-shape]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const shapeId = btn.getAttribute("data-add-shape");
+          pushUndoSnapshot();
+          const newItem = {
+            id: nextId("shp"),
+            kind: "shape",
+            assetId: shapeId,
+            color: drawColor,
+            x: 200,
+            y: 170,
+            scale: 1,
+            flip: false,
+          };
+          activePanel.items.push(newItem);
+          state.selectedItemId = newItem.id;
+          // Alterna para Mover automaticamente para já poder arrastar e redimensionar a forma
+          drawTool = "move";
+          persistState();
+          renderPanels();
+          renderInspector();
+          renderSidebarBody();
+        });
+      });
+
+      const btnClearDraw = document.getElementById("btnClearDrawingOnly");
+      if (btnClearDraw) {
+        btnClearDraw.addEventListener("click", () => {
+          if (!activePanel.drawingDataUrl) return;
+          pushUndoSnapshot();
+          activePanel.drawingDataUrl = null;
+          liveDrawBufferMap.delete(state.activePanelIndex);
+          persistState();
+          renderPanels();
+          showToast(`Traços do Quadro ${state.activePanelIndex + 1} apagados`);
+        });
+      }
     }
   }
 
@@ -1192,6 +1639,8 @@
         state.activePanelIndex = 0;
         state.selectedItemId = null;
         state.panels = tpl.panels.concat([createEmptyPanel("square")]);
+        if (activeSidebarTab === "draw") drawTool = "move";
+        syncBufferFromState();
         persistState();
         closeThemesModal();
         renderAll();
@@ -1266,8 +1715,15 @@
 
   sidebarTabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      activeSidebarTab = btn.getAttribute("data-sidebar-tab");
+      const nextTab = btn.getAttribute("data-sidebar-tab");
+      activeSidebarTab = nextTab;
+      if (nextTab === "draw" && drawTool === "move") {
+        drawTool = "pencil";
+        drawSize = 3;
+      }
       renderSidebarTabs();
+      renderPanels();
+      renderInspector();
       renderSidebarBody();
     });
   });
@@ -1277,11 +1733,13 @@
   if (btnClearPanel) {
     btnClearPanel.addEventListener("click", () => {
       const p = getActivePanel();
-      if (!p.items.length && p.sceneId === "minimal") return;
+      if (!p.items.length && !p.drawingDataUrl && p.sceneId === "minimal") return;
       pushUndoSnapshot();
       p.items = [];
+      p.drawingDataUrl = null;
       p.sceneId = "minimal";
       state.selectedItemId = null;
+      liveDrawBufferMap.delete(state.activePanelIndex);
       persistState();
       renderAll();
       showToast(`Quadro ${state.activePanelIndex + 1} limpo`);
@@ -1290,14 +1748,14 @@
 
   if (btnNewStrip) {
     btnNewStrip.addEventListener("click", () => {
-      const hasAnyItems = state.panels.some((p) => p.items.length > 0);
-      if (hasAnyItems && !window.confirm("Deseja iniciar uma nova tirinha em branco?")) {
-        return;
-      }
+      const hasAnyItems = state.panels.some((p) => p.items.length > 0 || p.drawingDataUrl);
+      if (hasAnyItems && !window.confirm("Deseja iniciar uma nova tirinha em branco?")) return;
       pushUndoSnapshot();
       state = createDefaultState();
       state.title = "";
       state.authors = "";
+      if (activeSidebarTab === "draw") drawTool = "move";
+      syncBufferFromState();
       persistState();
       renderAll();
       showToast("Nova tirinha criada");

@@ -177,7 +177,7 @@ button {
 
 .sidebar-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--border);
   background-color: #f8fafc;
 }
@@ -799,6 +799,118 @@ button {
 
 .comic-item:active {
   cursor: grabbing;
+}
+
+.comic-panel-frame.is-drawing {
+  cursor: crosshair;
+}
+
+.panel-draw-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.panel-draw-canvas.is-eraser {
+  cursor: cell;
+}
+
+.selection-quick-bar {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background-color: var(--white);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(16, 37, 66, 0.18);
+}
+
+.sq-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--navy);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sq-btn:hover {
+  background-color: var(--bg);
+}
+
+.sq-btn.is-danger {
+  color: var(--danger);
+}
+
+.sq-btn.is-danger:hover {
+  background-color: var(--danger-bg);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.emoji-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: var(--white);
+  font-size: 20px;
+  padding: 0;
+}
+
+.emoji-card:hover {
+  border-color: var(--navy);
+  background-color: var(--bg);
+}
+
+.swatch-compact {
+  gap: 5px;
+}
+
+.swatch-btn.swatch-sm {
+  width: 22px;
+  height: 22px;
+}
+
+.range-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mono-val {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.draw-range {
+  width: 100%;
+  accent-color: var(--burnt);
+  cursor: pointer;
 }
 
 /* Modal Temas */

@@ -355,33 +355,37 @@
   }
 
   // ---------------------------------------------------------------------------
-  // PENTEADOS HUMANOS (BACK + FRONT LAYERS)
+  // PENTEADOS HUMANOS (ENCAIXE PERFEITO NA CABEÇA cy=-58 r=28)
+  // Regra geométrica SVG: rx == |x0| mantém centro do arco em (0, -58)
   // ---------------------------------------------------------------------------
   function renderHairBack(style, color) {
     switch (style) {
       case "long":
-        return `<path d="M-32 -66 Q-36 -18 -26 -4 L26 -4 Q36 -18 32 -66 Q0 -100 -32 -66 Z" fill="${color}" stroke="${INK}" stroke-width="2.3"/>`;
+        return `<path d="M-32 -58 A32 34 0 0 1 32 -58 L34 -2 Q18 5 0 2 Q-18 5 -34 -2 Z" fill="${color}" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/>`;
       case "curly":
         return `
-          <circle cx="-26" cy="-72" r="16" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
-          <circle cx="26" cy="-72" r="16" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
-          <circle cx="0" cy="-84" r="20" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
-          <circle cx="-30" cy="-52" r="12" fill="${color}" stroke="${INK}" stroke-width="2"/>
-          <circle cx="30" cy="-52" r="12" fill="${color}" stroke="${INK}" stroke-width="2"/>
+          <circle cx="-26" cy="-70" r="16" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
+          <circle cx="26" cy="-70" r="16" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
+          <circle cx="0" cy="-81" r="21" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
+          <circle cx="-29" cy="-50" r="12" fill="${color}" stroke="${INK}" stroke-width="2"/>
+          <circle cx="29" cy="-50" r="12" fill="${color}" stroke="${INK}" stroke-width="2"/>
+          <circle cx="0" cy="-60" r="30.5" fill="${color}"/>
         `;
       case "puffs":
         return `
           <circle cx="-30" cy="-84" r="14" fill="${color}" stroke="${INK}" stroke-width="2.3"/>
           <circle cx="30" cy="-84" r="14" fill="${color}" stroke="${INK}" stroke-width="2.3"/>
-          <circle cx="0" cy="-64" r="32" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
+          <circle cx="0" cy="-60" r="31" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
         `;
       case "bun":
         return `
           <circle cx="0" cy="-94" r="14" fill="${color}" stroke="${INK}" stroke-width="2.3"/>
-          <circle cx="0" cy="-62" r="31" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
+          <circle cx="0" cy="-60" r="31" fill="${color}" stroke="${INK}" stroke-width="2.2"/>
         `;
       case "spiky":
+        return `<path d="M-30 -58 L-33 -88 L-15 -87 L-2 -103 L12 -87 L27 -96 L32 -58 Z" fill="${color}" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>`;
       case "short":
+        return `<path d="M-30 -58 A30 32 0 0 1 30 -58 Z" fill="${color}" stroke="${INK}" stroke-width="2.2"/>`;
       case "bald":
       default:
         return "";
@@ -393,21 +397,31 @@
       case "bald":
         return `<path d="M-12 -80 Q0 -85 12 -79" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.55" stroke-linecap="round"/>`;
       case "spiky":
-        return `<path d="M-28 -62 L-30 -86 L-14 -78 L-4 -96 L8 -80 L22 -92 L30 -64 Q14 -74 0 -70 Q-16 -74 -28 -62 Z" fill="${color}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`;
+        return `<path d="M-30 -58 A30 31 0 0 1 30 -58 Q18 -72 6 -66 Q-2 -74 -12 -66 Q-22 -70 -30 -58 Z" fill="${color}"/>`;
       case "curly":
-        return `<path d="M-26 -70 Q-14 -86 0 -76 Q14 -86 26 -70 Q12 -78 0 -72 Q-12 -78 -26 -70 Z" fill="${color}"/>`;
+        return `<path d="M-30 -58 A30 31 0 0 1 30 -58 Q18 -70 10 -76 Q0 -66 -10 -76 Q-18 -70 -30 -58 Z" fill="${color}"/>`;
       case "puffs":
         return `
+          <path d="M-30 -58 A30 31 0 0 1 30 -58 Q14 -76 0 -68 Q-14 -76 -30 -58 Z" fill="${color}"/>
           <path d="M-24 -76 L-18 -72" stroke="${BURNT}" stroke-width="4" stroke-linecap="round"/>
           <path d="M24 -76 L18 -72" stroke="${BURNT}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M-27 -68 Q-11 -86 0 -74 Q12 -86 27 -68 Q12 -80 0 -70 Q-14 -80 -27 -68 Z" fill="${color}"/>
         `;
       case "long":
+        return `
+          <path d="M-30 -58 A30 31.5 0 0 1 30 -58 Q18 -72 5 -74 Q-6 -64 -30 -58 Z" fill="${color}"/>
+          <path d="M-30 -58 Q-6 -64 5 -74 Q18 -72 30 -58" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/>
+        `;
       case "bun":
-        return `<path d="M-28 -62 Q-10 -88 18 -80 Q27 -74 28 -62 Q10 -76 -10 -70 Z" fill="${color}"/>`;
+        return `
+          <path d="M-30 -58 A30 31.5 0 0 1 30 -58 Q16 -74 0 -70 Q-16 -74 -30 -58 Z" fill="${color}"/>
+          <path d="M-30 -58 Q-16 -74 0 -70 Q16 -74 30 -58" fill="none" stroke="${INK}" stroke-width="1.5" stroke-linecap="round"/>
+        `;
       case "short":
       default:
-        return `<path d="M-29 -60 Q-30 -92 2 -90 Q30 -90 29 -60 Q20 -75 5 -73 Q-4 -80 -15 -71 Q-25 -71 -29 -60 Z" fill="${color}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`;
+        return `
+          <path d="M-30 -58 A30 31.5 0 0 1 30 -58 Q20 -73 5 -72 Q-4 -79 -15 -70 Q-24 -70 -30 -58 Z" fill="${color}"/>
+          <path d="M-30 -58 Q-24 -70 -15 -70 Q-4 -79 5 -72 Q20 -73 30 -58" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/>
+        `;
     }
   }
 
@@ -846,7 +860,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 12 OBJETOS DO COTIDIANO E LETRAMENTO DIGITAL
+  // 22 OBJETOS DO COTIDIANO, LETRAMENTO E CIDADANIA DIGITAL
   // ---------------------------------------------------------------------------
   const OBJECTS = [
     { id: "laptop", name: "Notebook" },
@@ -859,8 +873,53 @@
     { id: "book", name: "Livro" },
     { id: "magnifier", name: "Lupa" },
     { id: "fakenews", name: "Placa Fake News" },
+    { id: "verified", name: "Selo Verificado" },
+    { id: "danger", name: "Placa de Alerta" },
+    { id: "copyright", name: "Direitos Autorais" },
+    { id: "megaphone", name: "Megafone" },
+    { id: "gear", name: "Engrenagem" },
+    { id: "key", name: "Chave" },
+    { id: "newspaper", name: "Jornal / Notícia" },
+    { id: "headphones", name: "Fones de ouvido" },
+    { id: "camera", name: "Câmera" },
+    { id: "trash", name: "Lixeira" },
     { id: "lock", name: "Cadeado" },
     { id: "lightbulb", name: "Lâmpada de ideia" },
+  ];
+
+  const EMOJIS = [
+    { id: "🤔", name: "Pensando" },
+    { id: "😱", name: "Chocado" },
+    { id: "💡", name: "Ideia" },
+    { id: "✅", name: "Verificado" },
+    { id: "❌", name: "Falso" },
+    { id: "🔍", name: "Investigar" },
+    { id: "🤖", name: "Algoritmo" },
+    { id: "⚠️", name: "Alerta" },
+    { id: "👏", name: "Aplausos" },
+    { id: "❤️", name: "Curti" },
+    { id: "🎉", name: "Comemoração" },
+    { id: "💬", name: "Debate" },
+  ];
+
+  const DRAW_COLORS = [
+    { id: "#111827", name: "Preto" },
+    { id: "#FFFFFF", name: "Branco" },
+    { id: "#DC2626", name: "Vermelho" },
+    { id: "#EA580C", name: "Laranja" },
+    { id: "#FACC15", name: "Amarelo" },
+    { id: "#16A34A", name: "Verde" },
+    { id: "#2563EB", name: "Azul" },
+    { id: "#7C3AED", name: "Roxo" },
+    { id: "#78350F", name: "Marrom" },
+  ];
+
+  const SHAPES = [
+    { id: "circle", name: "Círculo" },
+    { id: "rect", name: "Quadrado" },
+    { id: "triangle", name: "Triângulo" },
+    { id: "arrow", name: "Seta" },
+    { id: "star", name: "Estrela" },
   ];
 
   function renderObjectMarkup(objId) {
@@ -986,6 +1045,100 @@
           <line x1="-26" y1="3" x2="-8" y2="5" stroke="#64748B" stroke-width="2" stroke-linecap="round"/>
           <line x1="8" y1="-4" x2="26" y2="-6" stroke="#64748B" stroke-width="2" stroke-linecap="round"/>
           <line x1="8" y1="5" x2="26" y2="3" stroke="#64748B" stroke-width="2" stroke-linecap="round"/>
+        `;
+
+      case "verified":
+        return `
+          <circle cx="0" cy="0" r="28" fill="#16A34A" stroke="${INK}" stroke-width="2.5"/>
+          <circle cx="0" cy="0" r="22" fill="none" stroke="#BBF7D0" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <path d="M-11 1 L-3 9 L13 -9" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        `;
+
+      case "danger":
+        return `
+          <polygon points="0,-29 30,24 -30,24" fill="#FACC15" stroke="${INK}" stroke-width="2.8" stroke-linejoin="round"/>
+          <polygon points="0,-21 22,19 -22,19" fill="none" stroke="#B91C1C" stroke-width="1.6" stroke-linejoin="round"/>
+          <rect x="-2.8" y="-11" width="5.6" height="17" rx="2.5" fill="#B91C1C"/>
+          <circle cx="0" cy="13" r="3.2" fill="#B91C1C"/>
+        `;
+
+      case "copyright":
+        return `
+          <circle cx="0" cy="0" r="27" fill="#102542" stroke="${INK}" stroke-width="2.5"/>
+          <circle cx="0" cy="0" r="20" fill="none" stroke="#FFFFFF" stroke-width="2.8"/>
+          <path d="M8 -8 A11 11 0 1 0 8 8" fill="none" stroke="#FACC15" stroke-width="4.2" stroke-linecap="round"/>
+        `;
+
+      case "megaphone":
+        return `
+          <path d="M-24 -8 L16 -22 L16 14 L-24 2 Z" fill="#C84B31" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+          <ellipse cx="16" cy="-4" rx="5" ry="18" fill="#FEE2E2" stroke="${INK}" stroke-width="2.2"/>
+          <rect x="-32" y="-9" width="10" height="12" rx="2" fill="#102542" stroke="${INK}" stroke-width="2.2"/>
+          <path d="M-22 3 L-18 22 L-10 22 L-14 4 Z" fill="#1E293B" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="26" y1="-10" x2="34" y2="-14" stroke="#F59E0B" stroke-width="2.8" stroke-linecap="round"/>
+          <line x1="28" y1="-4" x2="37" y2="-4" stroke="#F59E0B" stroke-width="2.8" stroke-linecap="round"/>
+          <line x1="26" y1="2" x2="34" y2="6" stroke="#F59E0B" stroke-width="2.8" stroke-linecap="round"/>
+        `;
+
+      case "gear":
+        return `
+          <g fill="#64748B" stroke="${INK}" stroke-width="2.2">
+            <rect x="-5" y="-32" width="10" height="64" rx="2"/>
+            <rect x="-32" y="-5" width="64" height="10" rx="2"/>
+            <rect x="-5" y="-32" width="10" height="64" rx="2" transform="rotate(45)"/>
+            <rect x="-5" y="-32" width="10" height="64" rx="2" transform="rotate(-45)"/>
+          </g>
+          <circle cx="0" cy="0" r="20" fill="#94A3B8" stroke="${INK}" stroke-width="2.5"/>
+          <circle cx="0" cy="0" r="8" fill="#102542" stroke="${INK}" stroke-width="2.2"/>
+        `;
+
+      case "key":
+        return `
+          <circle cx="-16" cy="0" r="13" fill="#FACC15" stroke="${INK}" stroke-width="2.5"/>
+          <circle cx="-16" cy="0" r="5" fill="#FFFFFF" stroke="${INK}" stroke-width="1.8"/>
+          <rect x="-3" y="-4" width="34" height="8" rx="2" fill="#FACC15" stroke="${INK}" stroke-width="2.3"/>
+          <rect x="16" y="4" width="5" height="9" fill="#FACC15" stroke="${INK}" stroke-width="2"/>
+          <rect x="24" y="4" width="5" height="12" fill="#FACC15" stroke="${INK}" stroke-width="2"/>
+        `;
+
+      case "newspaper":
+        return `
+          <rect x="-30" y="-24" width="60" height="48" rx="4" fill="#F8FAFC" stroke="${INK}" stroke-width="2.5"/>
+          <rect x="-24" y="-18" width="48" height="11" rx="2" fill="#102542"/>
+          <text x="0" y="-9.5" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="8.5" font-weight="800" fill="#FFFFFF">NOTÍCIA</text>
+          <rect x="-24" y="-2" width="22" height="18" rx="2" fill="#CBD5E1" stroke="#64748B" stroke-width="1.2"/>
+          <line x1="2" y1="0" x2="23" y2="0" stroke="#475569" stroke-width="2.2"/>
+          <line x1="2" y1="6" x2="23" y2="6" stroke="#94A3B8" stroke-width="2"/>
+          <line x1="2" y1="12" x2="18" y2="12" stroke="#94A3B8" stroke-width="2"/>
+        `;
+
+      case "headphones":
+        return `
+          <path d="M-24 6 V-4 A24 24 0 0 1 24 -4 V6" fill="none" stroke="#102542" stroke-width="6.5" stroke-linecap="round"/>
+          <rect x="-31" y="2" width="12" height="22" rx="5" fill="#C84B31" stroke="${INK}" stroke-width="2.4"/>
+          <rect x="19" y="2" width="12" height="22" rx="5" fill="#C84B31" stroke="${INK}" stroke-width="2.4"/>
+          <rect x="-22" y="4" width="5" height="18" rx="2" fill="#1E293B"/>
+          <rect x="17" y="4" width="5" height="18" rx="2" fill="#1E293B"/>
+        `;
+
+      case "camera":
+        return `
+          <rect x="-12" y="-24" width="24" height="10" rx="3" fill="#475569" stroke="${INK}" stroke-width="2.2"/>
+          <rect x="-30" y="-16" width="60" height="40" rx="6" fill="#1E293B" stroke="${INK}" stroke-width="2.5"/>
+          <circle cx="0" cy="4" r="14" fill="#94A3B8" stroke="${INK}" stroke-width="2.4"/>
+          <circle cx="0" cy="4" r="9" fill="#0284C7" stroke="${INK}" stroke-width="2"/>
+          <circle cx="-3" cy="1" r="2.5" fill="#BAE6FD"/>
+          <rect x="16" y="-11" width="8" height="5" rx="1.5" fill="#FDE047"/>
+        `;
+
+      case "trash":
+        return `
+          <rect x="-22" y="-22" width="44" height="7" rx="2" fill="#475569" stroke="${INK}" stroke-width="2.3"/>
+          <rect x="-8" y="-28" width="16" height="6" rx="2" fill="#64748B" stroke="${INK}" stroke-width="2"/>
+          <path d="M-19 -15 H19 L15 26 H-15 Z" fill="#CBD5E1" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+          <line x1="-7" y1="-8" x2="-6" y2="18" stroke="#475569" stroke-width="2.3" stroke-linecap="round"/>
+          <line x1="0" y1="-8" x2="0" y2="18" stroke="#475569" stroke-width="2.3" stroke-linecap="round"/>
+          <line x1="7" y1="-8" x2="6" y2="18" stroke="#475569" stroke-width="2.3" stroke-linecap="round"/>
         `;
 
       case "lightbulb":
@@ -1158,31 +1311,78 @@
     };
   }
 
+  function renderEmojiMarkup(emojiChar) {
+    return `<text x="0" y="15" text-anchor="middle" font-family='"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' font-size="44">${escapeXml(
+      emojiChar || "🤔"
+    )}</text>`;
+  }
+
+  function renderShapeMarkup(shapeId, color) {
+    const fill = color || "#C84B31";
+    const strokeCol = fill.toUpperCase() === "#111827" ? "#374151" : INK;
+    switch (shapeId) {
+      case "circle":
+        return `<circle cx="0" cy="0" r="28" fill="${fill}" stroke="${strokeCol}" stroke-width="2.6"/>`;
+      case "rect":
+        return `<rect x="-28" y="-24" width="56" height="48" rx="4" fill="${fill}" stroke="${strokeCol}" stroke-width="2.6"/>`;
+      case "triangle":
+        return `<polygon points="0,-29 30,24 -30,24" fill="${fill}" stroke="${strokeCol}" stroke-width="2.6" stroke-linejoin="round"/>`;
+      case "arrow":
+        return `<polygon points="-32,-10 6,-10 6,-24 34,0 6,24 6,10 -32,10" fill="${fill}" stroke="${strokeCol}" stroke-width="2.5" stroke-linejoin="round"/>`;
+      case "star":
+      default: {
+        const pts = [];
+        for (let i = 0; i < 10; i++) {
+          const r = i % 2 === 0 ? 31 : 13.5;
+          const a = -Math.PI / 2 + (i * Math.PI) / 5;
+          pts.push(`${(Math.cos(a) * r).toFixed(1)},${(Math.sin(a) * r).toFixed(1)}`);
+        }
+        return `<polygon points="${pts.join(" ")}" fill="${fill}" stroke="${strokeCol}" stroke-width="2.5" stroke-linejoin="round"/>`;
+      }
+    }
+  }
+
   function renderItemMarkup(item) {
     if (item.kind === "character") return renderCharacterMarkup(item);
     if (item.kind === "object") return renderObjectMarkup(item.assetId);
+    if (item.kind === "emoji") return renderEmojiMarkup(item.emoji || item.assetId);
+    if (item.kind === "shape") return renderShapeMarkup(item.assetId, item.color);
     if (item.kind === "bubble") return renderBubbleMarkup(item).markup;
     return "";
   }
 
-  function renderPanelInnerSvg(panel) {
-    const bg = global.HQScenes ? global.HQScenes.renderSceneMarkup(panel.sceneId || "classroom") : "";
-    const itemsSvg = (panel.items || [])
-      .map((item) => {
-        const scale = Number(item.scale) || 1;
-        const flip = item.flip ? -1 : 1;
-        const sx = (scale * flip).toFixed(3);
-        const sy = scale.toFixed(3);
-        const inner = renderItemMarkup(item);
-        return `<g data-item-id="${escapeXml(item.id)}" transform="translate(${Math.round(
-          item.x
-        )} ${Math.round(item.y)}) scale(${sx} ${sy})" class="comic-item">${inner}</g>`;
-      })
-      .join("");
-    return bg + itemsSvg;
+  function renderItemGroupSvg(item) {
+    const scale = Number(item.scale) || 1;
+    const flip = item.flip ? -1 : 1;
+    const sx = (scale * flip).toFixed(3);
+    const sy = scale.toFixed(3);
+    const inner = renderItemMarkup(item);
+    return `<g data-item-id="${escapeXml(item.id)}" transform="translate(${Math.round(
+      item.x
+    )} ${Math.round(item.y)}) scale(${sx} ${sy})" class="comic-item">${inner}</g>`;
   }
 
-  function buildThumbnailSvg(kind, assetId) {
+  function renderPanelUnderLayerSvg(panel) {
+    const bg = global.HQScenes ? global.HQScenes.renderSceneMarkup(panel.sceneId || "classroom") : "";
+    const underItems = (panel.items || []).filter((it) => it.kind !== "bubble").map(renderItemGroupSvg).join("");
+    return bg + underItems;
+  }
+
+  function renderPanelOverLayerSvg(panel) {
+    return (panel.items || []).filter((it) => it.kind === "bubble").map(renderItemGroupSvg).join("");
+  }
+
+  function renderPanelInnerSvg(panel, includeDrawingImg) {
+    const under = renderPanelUnderLayerSvg(panel);
+    const drawImg =
+      includeDrawingImg && panel.drawingDataUrl
+        ? `<image href="${escapeXml(panel.drawingDataUrl)}" x="0" y="0" width="400" height="340" pointer-events="none"/>`
+        : "";
+    const over = renderPanelOverLayerSvg(panel);
+    return under + drawImg + over;
+  }
+
+  function buildThumbnailSvg(kind, assetId, extraColor) {
     if (kind === "scene" && global.HQScenes) {
       return `<svg viewBox="0 0 400 340" xmlns="${SVG_NS}" aria-hidden="true">${global.HQScenes.renderSceneMarkup(
         assetId
@@ -1213,6 +1413,12 @@
         assetId
       )}</svg>`;
     }
+    if (kind === "shape") {
+      return `<svg viewBox="-40 -40 80 80" xmlns="${SVG_NS}" aria-hidden="true">${renderShapeMarkup(
+        assetId,
+        extraColor
+      )}</svg>`;
+    }
     if (kind === "bubble") {
       const sample = {
         type: assetId,
@@ -1240,10 +1446,15 @@
     OUTFIT_COLORS,
     ACCESSORY_LIST,
     OBJECTS,
+    EMOJIS,
+    DRAW_COLORS,
+    SHAPES,
     BUBBLE_TYPES,
     escapeXml,
     wrapLines,
     renderCharacterMarkup,
+    renderPanelUnderLayerSvg,
+    renderPanelOverLayerSvg,
     renderPanelInnerSvg,
     buildThumbnailSvg,
     renderBubbleMarkup,
