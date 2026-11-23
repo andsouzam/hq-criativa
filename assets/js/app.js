@@ -1,5 +1,5 @@
 (function () {
-  const STORAGE_KEY = "hq_criativa_letramento_v1";
+  const STORAGE_KEY = "hq_criativa_letramento_v2";
   const MAX_HISTORY = 30;
 
   let uidCounter = Date.now();
@@ -38,7 +38,11 @@
   let state = loadSavedState() || createDefaultState();
   let undoStack = [];
   let activeSidebarTab = "scenes";
+  let activeSceneFilter = "Todos";
+  let charSidebarMode = "add"; // "add" | "customize"
   let pendingExpression = "happy";
+  let pendingPose = "standing";
+  let pendingFraming = "full";
   let pendingBubbleDraft = {
     type: "speech",
     text: "Oi! Vamos checar essa fonte?",
@@ -46,7 +50,7 @@
     tailDir: "left",
   };
 
-  // Referências DOM
+  // DOM
   const titleInput = document.getElementById("hqTitleInput");
   const authorsInput = document.getElementById("hqAuthorsInput");
   const layoutButtons = document.querySelectorAll("[data-layout-count]");
@@ -135,6 +139,19 @@
     return panel.items.find((it) => it.id === state.selectedItemId) || null;
   }
 
+  function getItemLabel(item) {
+    if (!item) return "";
+    if (item.kind === "character") {
+      const d = HQArt.CHARACTER_DEFAULTS[item.assetId];
+      return d ? d.name : "Personagem";
+    }
+    if (item.kind === "object") {
+      const o = HQArt.OBJECTS.find((x) => x.id === item.assetId);
+      return o ? o.name : "Objeto";
+    }
+    return "Balão";
+  }
+
   // ---------------------------------------------------------------------------
   // RENDERING
   // ---------------------------------------------------------------------------
@@ -165,7 +182,7 @@
         renderPanels();
         renderPanelJumpTabs();
         renderInspector();
-        if (activeSidebarTab === "scenes") renderSidebarBody();
+        if (activeSidebarTab === "scenes" || activeSidebarTab === "characters") renderSidebarBody();
       });
       panelJumpTabs.appendChild(btn);
     }
@@ -199,9 +216,7 @@
       let selectionBox = "";
       if (isActive && state.selectedItemId) {
         const sel = panel.items.find((it) => it.id === state.selectedItemId);
-        if (sel) {
-          selectionBox = buildSelectionHalo(sel);
-        }
+        if (sel) selectionBox = buildSelectionHalo(sel);
       }
       svg.innerHTML = innerMarkup + selectionBox;
 
@@ -217,9 +232,18 @@
     let hh = 48 * sc;
     let offsetY = 0;
     if (item.kind === "character") {
-      hw = 52 * sc;
-      hh = 104 * sc;
-      offsetY = -12 * sc;
+      const isAnim = Boolean(
+        item.isAnimal || (HQArt.CHARACTER_DEFAULTS[item.assetId] && HQArt.CHARACTER_DEFAULTS[item.assetId].isAnimal)
+      );
+      if (isAnim) {
+        hw = 48 * sc;
+        hh = 70 * sc;
+        offsetY = -6 * sc;
+      } else {
+        hw = 54 * sc;
+        hh = item.framing === "half" ? 104 * sc : 132 * sc;
+        offsetY = item.framing === "half" ? -12 * sc : 12 * sc;
+      }
     } else if (item.kind === "bubble") {
       const info = HQArt.renderBubbleMarkup(item);
       hw = (info.boxW / 2 + 8) * sc;
@@ -243,13 +267,11 @@
 
       if (!targetGroup) {
         state.selectedItemId = null;
-        if (prevPanel !== panelIndex || state.selectedItemId !== null) {
-          persistState();
-        }
+        if (prevPanel !== panelIndex) persistState();
         renderPanels();
         renderPanelJumpTabs();
         renderInspector();
-        if (activeSidebarTab === "scenes") renderSidebarBody();
+        if (activeSidebarTab === "scenes" || activeSidebarTab === "characters") renderSidebarBody();
         return;
       }
 
@@ -278,6 +300,7 @@
       renderPanels();
       renderPanelJumpTabs();
       renderInspector();
+      if (activeSidebarTab === "characters") renderSidebarBody();
     });
 
     svg.addEventListener("pointermove", (e) => {
@@ -286,10 +309,9 @@
       const curX = ((e.clientX - rect.left) / rect.width) * 400;
       const curY = ((e.clientY - rect.top) / rect.height) * 340;
       dragging.item.x = Math.min(378, Math.max(22, curX + dragging.offsetX));
-      dragging.item.y = Math.min(318, Math.max(22, curY + dragging.offsetY));
+      dragging.item.y = Math.min(322, Math.max(22, curY + dragging.offsetY));
       dragging.moved = true;
 
-      // Atualiza transform diretamente no SVG em andamento para arraste instantâneo 60fps
       const liveG = dragging.svg.querySelector(`[data-item-id="${CSS.escape(dragging.item.id)}"]`);
       if (liveG) {
         const sc = Number(dragging.item.scale) || 1;
@@ -308,7 +330,6 @@
       if (dragging.moved) {
         persistState();
       } else {
-        // Sem movimento real -> remove snapshot redundante de undo
         undoStack.pop();
         updateUndoButton();
       }
@@ -340,9 +361,34 @@
   // ---------------------------------------------------------------------------
   // ELEMENT INSPECTOR BAR
   // ---------------------------------------------------------------------------
+  function applyCharObjectInteraction(charItem, objItem) {
+    if (!charItem || !objItem) return;
+    pushUndoSnapshot();
+    const res = HQArt.computeInteractionPlacement(charItem, objItem.assetId);
+    charItem.pose = res.pose;
+    objItem.x = res.objX;
+    objItem.y = res.objY;
+    objItem.flip = res.objFlip;
+
+    // Garante que o objeto interagido fique à frente das mãos do personagem
+    const panel = getActivePanel();
+    const cIdx = panel.items.findIndex((i) => i.id === charItem.id);
+    const oIdx = panel.items.findIndex((i) => i.id === objItem.id);
+    if (cIdx >= 0 && oIdx >= 0 && oIdx < cIdx) {
+      panel.items.splice(oIdx, 1);
+      panel.items.push(objItem);
+    }
+    persistState();
+    renderPanels();
+    renderInspector();
+    if (activeSidebarTab === "characters") renderSidebarBody();
+    showToast(`${getItemLabel(charItem)} interagindo com ${getItemLabel(objItem)}`);
+  }
+
   function renderInspector() {
     if (!inspectorEl) return;
     const item = getSelectedItem();
+    const panel = getActivePanel();
     const panelNum = state.activePanelIndex + 1;
 
     if (!item) {
@@ -350,7 +396,7 @@
       inspectorEl.innerHTML = `
         <div class="inspector-idle">
           <span class="inspector-badge">Quadro ${panelNum} ativo</span>
-          <span class="inspector-hint">Clique em um item do quadro para editar ou arrastar. Adicione elementos pelo painel ao lado.</span>
+          <span class="inspector-hint">Clique e arraste personagens, objetos ou balões livremente no quadro.</span>
         </div>
       `;
       return;
@@ -359,28 +405,63 @@
     inspectorEl.classList.add("has-selection");
 
     if (item.kind === "character") {
+      const def = HQArt.CHARACTER_DEFAULTS[item.assetId] || {};
+      const isAnim = Boolean(item.isAnimal || def.isAnimal);
       const exprBtns = HQArt.EXPRESSIONS.map(
         (ex) =>
           `<button type="button" class="mini-pill${item.expression === ex.id ? " is-active" : ""}" data-insp-expr="${ex.id}">${ex.name}</button>`
       ).join("");
+      const poseBtns = HQArt.POSES.map(
+        (ps) =>
+          `<button type="button" class="mini-pill${(item.pose || "standing") === ps.id ? " is-active" : ""}" data-insp-pose="${ps.id}">${ps.name}</button>`
+      ).join("");
+
+      const framingToggle = isAnim
+        ? ""
+        : `<div class="mini-pills">
+            <button type="button" class="mini-pill${item.framing !== "half" ? " is-active" : ""}" data-insp-framing="full">Corpo inteiro</button>
+            <button type="button" class="mini-pill${item.framing === "half" ? " is-active" : ""}" data-insp-framing="half">Meio corpo</button>
+          </div>`;
+
+      const panelObjects = panel.items.filter((i) => i.kind === "object");
+      const interactHtml = panelObjects.length
+        ? `<div class="inspector-interact">
+            <select id="inspObjSelect" class="mini-select" aria-label="Escolher objeto para interagir">
+              ${panelObjects
+                .map((o) => `<option value="${HQArt.escapeXml(o.id)}">${HQArt.escapeXml(getItemLabel(o))}</option>`)
+                .join("")}
+            </select>
+            <button type="button" class="mini-btn is-accent" id="btnInspInteractObj">Usar objeto</button>
+          </div>`
+        : "";
+
       inspectorEl.innerHTML = `
-        <div class="inspector-row">
-          <div class="inspector-group">
-            <span class="inspector-label">Expressão</span>
-            <div class="mini-pills">${exprBtns}</div>
+        <div class="inspector-char-stack">
+          <div class="inspector-row">
+            <div class="inspector-group">
+              <span class="inspector-label">Expressão</span>
+              <div class="mini-pills">${exprBtns}</div>
+            </div>
+            <div class="inspector-actions">
+              ${framingToggle}
+              <button type="button" class="mini-btn is-navy" id="btnInspCustomize">Visual / Acessórios</button>
+              <button type="button" class="mini-btn" data-insp-flip>Inverter</button>
+              <button type="button" class="mini-btn" data-insp-scale="-0.08">A-</button>
+              <button type="button" class="mini-btn" data-insp-scale="0.08">A+</button>
+              <button type="button" class="mini-btn" data-insp-front>Frente</button>
+              <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
+            </div>
           </div>
-          <div class="inspector-actions">
-            <button type="button" class="mini-btn" data-insp-flip title="Inverter direção">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/></svg>
-              <span>Inverter direção</span>
-            </button>
-            <button type="button" class="mini-btn" data-insp-scale="-0.1" title="Diminuir">A-</button>
-            <button type="button" class="mini-btn" data-insp-scale="0.1" title="Aumentar">A+</button>
-            <button type="button" class="mini-btn" data-insp-front title="Trazer para frente">Frente</button>
-            <button type="button" class="mini-btn is-danger" data-insp-delete>Remover</button>
+          <div class="inspector-row">
+            <div class="inspector-group">
+              <span class="inspector-label">Posição / Ação</span>
+              <div class="mini-pills">${poseBtns}</div>
+            </div>
+            ${interactHtml}
           </div>
         </div>
       `;
+
       bindCommonInspectorEvents(item);
       inspectorEl.querySelectorAll("[data-insp-expr]").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -391,15 +472,65 @@
           renderInspector();
         });
       });
+      inspectorEl.querySelectorAll("[data-insp-pose]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          pushUndoSnapshot();
+          item.pose = btn.getAttribute("data-insp-pose");
+          persistState();
+          renderPanels();
+          renderInspector();
+          if (activeSidebarTab === "characters") renderSidebarBody();
+        });
+      });
+      inspectorEl.querySelectorAll("[data-insp-framing]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const fr = btn.getAttribute("data-insp-framing");
+          if (item.framing === fr) return;
+          pushUndoSnapshot();
+          item.framing = fr;
+          persistState();
+          renderPanels();
+          renderInspector();
+        });
+      });
+      const btnCust = document.getElementById("btnInspCustomize");
+      if (btnCust) {
+        btnCust.addEventListener("click", () => {
+          activeSidebarTab = "characters";
+          charSidebarMode = "customize";
+          renderSidebarTabs();
+          renderSidebarBody();
+        });
+      }
+      const btnInter = document.getElementById("btnInspInteractObj");
+      const selObj = document.getElementById("inspObjSelect");
+      if (btnInter && selObj) {
+        btnInter.addEventListener("click", () => {
+          const obj = panel.items.find((o) => o.id === selObj.value);
+          if (obj) applyCharObjectInteraction(item, obj);
+        });
+      }
       return;
     }
 
     if (item.kind === "object") {
+      const panelChars = panel.items.filter((i) => i.kind === "character");
+      const charInteractHtml = panelChars.length
+        ? `<div class="inspector-interact">
+            <select id="inspCharSelect" class="mini-select" aria-label="Escolher personagem para segurar ou usar">
+              ${panelChars
+                .map((c) => `<option value="${HQArt.escapeXml(c.id)}">${HQArt.escapeXml(getItemLabel(c))}</option>`)
+                .join("")}
+            </select>
+            <button type="button" class="mini-btn is-accent" id="btnInspCharUse">Entregar ao personagem</button>
+          </div>`
+        : "";
+
       inspectorEl.innerHTML = `
         <div class="inspector-row">
           <div class="inspector-group">
-            <span class="inspector-badge">Objeto no Quadro ${panelNum}</span>
-            <span class="inspector-hint">Arraste no quadro para posicionar</span>
+            <span class="inspector-badge">${HQArt.escapeXml(getItemLabel(item))}</span>
+            ${charInteractHtml}
           </div>
           <div class="inspector-actions">
             <button type="button" class="mini-btn" data-insp-flip>Inverter</button>
@@ -411,6 +542,14 @@
         </div>
       `;
       bindCommonInspectorEvents(item);
+      const btnGive = document.getElementById("btnInspCharUse");
+      const selCh = document.getElementById("inspCharSelect");
+      if (btnGive && selCh) {
+        btnGive.addEventListener("click", () => {
+          const ch = panel.items.find((c) => c.id === selCh.value);
+          if (ch) applyCharObjectInteraction(ch, item);
+        });
+      }
       return;
     }
 
@@ -473,9 +612,7 @@
         btn.addEventListener("click", () => {
           pushUndoSnapshot();
           item.type = btn.getAttribute("data-insp-btype");
-          if (item.type === "narrator") {
-            item.y = 38;
-          }
+          if (item.type === "narrator") item.y = 34;
           persistState();
           renderPanels();
           renderInspector();
@@ -516,7 +653,7 @@
       btn.addEventListener("click", () => {
         pushUndoSnapshot();
         const delta = Number(btn.getAttribute("data-insp-scale"));
-        const nextScale = Math.min(1.6, Math.max(0.55, (Number(item.scale) || 1) + delta));
+        const nextScale = Math.min(1.6, Math.max(0.5, (Number(item.scale) || 1) + delta));
         item.scale = Number(nextScale.toFixed(2));
         persistState();
         renderPanels();
@@ -555,10 +692,11 @@
     persistState();
     renderPanels();
     renderInspector();
+    if (activeSidebarTab === "characters") renderSidebarBody();
   }
 
   // ---------------------------------------------------------------------------
-  // SIDEBAR CATALOGS
+  // SIDEBAR CATALOGS & CUSTOMIZER
   // ---------------------------------------------------------------------------
   function renderSidebarTabs() {
     sidebarTabButtons.forEach((btn) => {
@@ -574,19 +712,43 @@
     const activePanel = getActivePanel();
 
     if (activeSidebarTab === "scenes") {
+      const groups = ["Todos", "Casa", "Escola", "Ar livre", "Estúdio"];
+      const filtered =
+        activeSceneFilter === "Todos"
+          ? HQArt.SCENES
+          : HQArt.SCENES.filter((s) => s.group === activeSceneFilter);
+
       sidebarBodyEl.innerHTML = `
-        <p class="sidebar-hint">Clique em um cenário para aplicar ao <strong>Quadro ${state.activePanelIndex + 1}</strong>.</p>
+        <div class="sidebar-subblock">
+          <div class="expr-grid">
+            ${groups
+              .map(
+                (g) =>
+                  `<button type="button" class="expr-pill${activeSceneFilter === g ? " is-active" : ""}" data-scene-group="${g}">${g}</button>`
+              )
+              .join("")}
+          </div>
+        </div>
+        <p class="sidebar-hint">Aplicar cenário ao <strong>Quadro ${state.activePanelIndex + 1}</strong>:</p>
         <div class="catalog-grid">
-          ${HQArt.SCENES.map(
-            (sc) => `
+          ${filtered
+            .map(
+              (sc) => `
             <button type="button" class="catalog-card${activePanel.sceneId === sc.id ? " is-selected" : ""}" data-pick-scene="${sc.id}">
               <div class="catalog-thumb scene-thumb">${HQArt.buildThumbnailSvg("scene", sc.id)}</div>
               <span class="catalog-name">${sc.name}</span>
-              <span class="catalog-sub">${sc.desc}</span>
+              <span class="catalog-sub">${sc.group}</span>
             </button>`
-          ).join("")}
+            )
+            .join("")}
         </div>
       `;
+      sidebarBodyEl.querySelectorAll("[data-scene-group]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          activeSceneFilter = btn.getAttribute("data-scene-group");
+          renderSidebarBody();
+        });
+      });
       sidebarBodyEl.querySelectorAll("[data-pick-scene]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const sceneId = btn.getAttribute("data-pick-scene");
@@ -602,55 +764,253 @@
     }
 
     if (activeSidebarTab === "characters") {
-      sidebarBodyEl.innerHTML = `
+      const sel = getSelectedItem();
+      const selectedChar = sel && sel.kind === "character" ? sel : null;
+      if (!selectedChar && charSidebarMode === "customize") {
+        charSidebarMode = "add";
+      }
+
+      const modeSwitch = `
         <div class="sidebar-subblock">
-          <span class="sidebar-label">Expressão inicial ao adicionar</span>
-          <div class="expr-grid">
-            ${HQArt.EXPRESSIONS.map(
-              (ex) => `
-              <button type="button" class="expr-pill${pendingExpression === ex.id ? " is-active" : ""}" data-pick-expr="${ex.id}">${ex.name}</button>`
-            ).join("")}
+          <div class="segmented segmented-full">
+            <button type="button" class="seg-btn${charSidebarMode === "add" ? " is-active" : ""}" data-char-mode="add">Adicionar</button>
+            <button type="button" class="seg-btn${charSidebarMode === "customize" ? " is-active" : ""}" data-char-mode="customize"${
+        selectedChar ? "" : " disabled"
+      }>Personalizar visual</button>
           </div>
         </div>
-        <p class="sidebar-hint">Clique no personagem para inserir no <strong>Quadro ${state.activePanelIndex + 1}</strong>.</p>
-        <div class="catalog-grid">
-          ${HQArt.CHARACTERS.map(
-            (ch) => `
-            <button type="button" class="catalog-card" data-add-char="${ch.id}">
-              <div class="catalog-thumb char-thumb">${HQArt.buildThumbnailSvg("character", ch.id)}</div>
-              <span class="catalog-name">${ch.name}</span>
-            </button>`
-          ).join("")}
-        </div>
       `;
+
+      if (charSidebarMode === "customize" && selectedChar) {
+        const def = HQArt.CHARACTER_DEFAULTS[selectedChar.assetId] || {};
+        const isAnim = Boolean(selectedChar.isAnimal || def.isAnimal);
+        const isRobot = selectedChar.assetId === "robot";
+        const skinPalette = isAnim ? HQArt.ANIMAL_COAT_COLORS : HQArt.SKIN_TONES;
+        const skinLabel = isAnim ? "Cor da pelagem / casco" : isRobot ? "Cor do chassi" : "Tom de pele";
+        const outfitLabel = isAnim ? "Cor da coleira / casco" : "Cor da roupa";
+        const curAcc = selectedChar.accessories || {};
+
+        sidebarBodyEl.innerHTML = `
+          ${modeSwitch}
+          <div class="customizer-stack">
+            <div class="custom-group">
+              <span class="sidebar-label">Enquadramento &amp; Posição</span>
+              <div class="expr-grid">
+                ${
+                  isAnim
+                    ? ""
+                    : `<button type="button" class="expr-pill${selectedChar.framing !== "half" ? " is-active" : ""}" data-cust-framing="full">Corpo inteiro</button>
+                       <button type="button" class="expr-pill${selectedChar.framing === "half" ? " is-active" : ""}" data-cust-framing="half">Meio corpo</button>`
+                }
+                ${HQArt.POSES.map(
+                  (ps) =>
+                    `<button type="button" class="expr-pill${(selectedChar.pose || "standing") === ps.id ? " is-active" : ""}" data-cust-pose="${ps.id}">${ps.name}</button>`
+                ).join("")}
+              </div>
+            </div>
+
+            <div class="custom-group">
+              <span class="sidebar-label">${skinLabel}</span>
+              <div class="swatch-row">
+                ${skinPalette
+                  .map(
+                    (c) =>
+                      `<button type="button" class="swatch-btn${selectedChar.skinColor === c.id ? " is-active" : ""}" style="background:${c.id}" title="${c.name}" data-cust-skin="${c.id}" aria-label="${c.name}"></button>`
+                  )
+                  .join("")}
+              </div>
+            </div>
+
+            ${
+              isAnim || isRobot
+                ? ""
+                : `<div class="custom-group">
+                    <span class="sidebar-label">Estilo de penteado</span>
+                    <div class="expr-grid">
+                      ${HQArt.HAIR_STYLES.map(
+                        (hs) =>
+                          `<button type="button" class="expr-pill${selectedChar.hairStyle === hs.id ? " is-active" : ""}" data-cust-hstyle="${hs.id}">${hs.name}</button>`
+                      ).join("")}
+                    </div>
+                  </div>
+                  <div class="custom-group">
+                    <span class="sidebar-label">Cor do cabelo</span>
+                    <div class="swatch-row">
+                      ${HQArt.HAIR_COLORS.map(
+                        (hc) =>
+                          `<button type="button" class="swatch-btn${selectedChar.hairColor === hc.id ? " is-active" : ""}" style="background:${hc.id}" title="${hc.name}" data-cust-hcolor="${hc.id}" aria-label="${hc.name}"></button>`
+                      ).join("")}
+                    </div>
+                  </div>`
+            }
+
+            <div class="custom-group">
+              <span class="sidebar-label">${outfitLabel}</span>
+              <div class="swatch-row">
+                ${HQArt.OUTFIT_COLORS.map(
+                  (oc) =>
+                    `<button type="button" class="swatch-btn${selectedChar.outfitColor === oc.id ? " is-active" : ""}" style="background:${oc.id}" title="${oc.name}" data-cust-outfit="${oc.id}" aria-label="${oc.name}"></button>`
+                ).join("")}
+              </div>
+            </div>
+
+            <div class="custom-group">
+              <span class="sidebar-label">Acessórios</span>
+              <div class="expr-grid">
+                ${HQArt.ACCESSORY_LIST.map(
+                  (ac) =>
+                    `<button type="button" class="expr-pill${curAcc[ac.id] ? " is-active" : ""}" data-cust-acc="${ac.id}">${ac.name}</button>`
+                ).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+
+        bindSidebarModeSwitch();
+        sidebarBodyEl.querySelectorAll("[data-cust-framing]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.framing = b.getAttribute("data-cust-framing");
+            persistState(); renderPanels(); renderInspector(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-pose]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.pose = b.getAttribute("data-cust-pose");
+            persistState(); renderPanels(); renderInspector(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-skin]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.skinColor = b.getAttribute("data-cust-skin");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-hstyle]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.hairStyle = b.getAttribute("data-cust-hstyle");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-hcolor]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.hairColor = b.getAttribute("data-cust-hcolor");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-outfit]").forEach((b) => {
+          b.addEventListener("click", () => {
+            pushUndoSnapshot();
+            selectedChar.outfitColor = b.getAttribute("data-cust-outfit");
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        sidebarBodyEl.querySelectorAll("[data-cust-acc]").forEach((b) => {
+          b.addEventListener("click", () => {
+            const k = b.getAttribute("data-cust-acc");
+            pushUndoSnapshot();
+            if (!selectedChar.accessories) selectedChar.accessories = {};
+            selectedChar.accessories[k] = !selectedChar.accessories[k];
+            persistState(); renderPanels(); renderSidebarBody();
+          });
+        });
+        return;
+      }
+
+      // Modo Adicionar Personagem (Crianças, Adultos, Tecnologia, Animais)
+      const groups = ["Crianças", "Adultos", "Tecnologia", "Animais"];
+      const groupHtml = groups
+        .map((grp) => {
+          const items = HQArt.CHARACTERS.filter((c) => c.category === grp);
+          return `
+            <div class="char-category-block">
+              <span class="sidebar-group-heading">${grp}</span>
+              <div class="catalog-grid">
+                ${items
+                  .map(
+                    (ch) => `
+                  <button type="button" class="catalog-card" data-add-char="${ch.id}">
+                    <div class="catalog-thumb char-thumb">${HQArt.buildThumbnailSvg("character", ch.id)}</div>
+                    <span class="catalog-name">${ch.name}</span>
+                  </button>`
+                  )
+                  .join("")}
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      sidebarBodyEl.innerHTML = `
+        ${modeSwitch}
+        <div class="sidebar-subblock">
+          <span class="sidebar-label">Enquadramento padrão</span>
+          <div class="expr-grid">
+            <button type="button" class="expr-pill${pendingFraming === "full" ? " is-active" : ""}" data-pick-framing="full">Corpo inteiro</button>
+            <button type="button" class="expr-pill${pendingFraming === "half" ? " is-active" : ""}" data-pick-framing="half">Meio corpo</button>
+          </div>
+          <span class="sidebar-label" style="margin-top:10px">Expressão &amp; Posição ao inserir</span>
+          <div class="expr-grid">
+            ${HQArt.EXPRESSIONS.map(
+              (ex) => `<button type="button" class="expr-pill${pendingExpression === ex.id ? " is-active" : ""}" data-pick-expr="${ex.id}">${ex.name}</button>`
+            ).join("")}
+          </div>
+          <div class="expr-grid" style="margin-top:6px">
+            ${HQArt.POSES.slice(0, 4)
+              .map((ps) => `<button type="button" class="expr-pill${pendingPose === ps.id ? " is-active" : ""}" data-pick-pose="${ps.id}">${ps.name}</button>`)
+              .join("")}
+          </div>
+        </div>
+        ${groupHtml}
+      `;
+
+      bindSidebarModeSwitch();
+      sidebarBodyEl.querySelectorAll("[data-pick-framing]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          pendingFraming = btn.getAttribute("data-pick-framing");
+          renderSidebarBody();
+        });
+      });
       sidebarBodyEl.querySelectorAll("[data-pick-expr]").forEach((btn) => {
         btn.addEventListener("click", () => {
           pendingExpression = btn.getAttribute("data-pick-expr");
-          const sel = getSelectedItem();
-          if (sel && sel.kind === "character") {
-            pushUndoSnapshot();
-            sel.expression = pendingExpression;
-            persistState();
-            renderPanels();
-            renderInspector();
-          }
+          renderSidebarBody();
+        });
+      });
+      sidebarBodyEl.querySelectorAll("[data-pick-pose]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          pendingPose = btn.getAttribute("data-pick-pose");
           renderSidebarBody();
         });
       });
       sidebarBodyEl.querySelectorAll("[data-add-char]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const charId = btn.getAttribute("data-add-char");
+          const def = HQArt.CHARACTER_DEFAULTS[charId] || HQArt.CHARACTER_DEFAULTS.girl;
           pushUndoSnapshot();
           const charCount = activePanel.items.filter((i) => i.kind === "character").length;
-          const xSlot = charCount === 0 ? 135 : charCount === 1 ? 265 : 200;
+          const xSlot = charCount === 0 ? 130 : charCount === 1 ? 268 : 200;
+          const isAnim = Boolean(def.isAnimal);
           const newItem = {
             id: nextId("ch"),
             kind: "character",
             assetId: charId,
+            isAnimal: isAnim,
             expression: pendingExpression,
+            pose: pendingPose,
+            framing: pendingFraming,
+            skinColor: def.skinColor,
+            hairColor: def.hairColor,
+            hairStyle: def.hairStyle,
+            outfitColor: def.outfitColor,
+            accessories: cloneData(def.defaultAccessories || {}),
             x: xSlot,
-            y: 248,
-            scale: 1,
+            y: isAnim ? 270 : 215,
+            scale: isAnim ? 0.9 : 0.85,
             flip: charCount === 1,
           };
           activePanel.items.push(newItem);
@@ -658,6 +1018,7 @@
           persistState();
           renderPanels();
           renderInspector();
+          renderSidebarBody();
         });
       });
       return;
@@ -665,7 +1026,7 @@
 
     if (activeSidebarTab === "objects") {
       sidebarBodyEl.innerHTML = `
-        <p class="sidebar-hint">Clique em um objeto para adicionar ao <strong>Quadro ${state.activePanelIndex + 1}</strong>.</p>
+        <p class="sidebar-hint">Clique em um objeto para adicionar ao <strong>Quadro ${state.activePanelIndex + 1}</strong> e arraste ou conecte a um personagem.</p>
         <div class="catalog-grid">
           ${HQArt.OBJECTS.map(
             (obj) => `
@@ -685,9 +1046,9 @@
             id: nextId("obj"),
             kind: "object",
             assetId: objId,
-            x: Math.min(340, 210 + (objCount % 3) * 32),
-            y: 210 + (objCount % 2) * 26,
-            scale: 1,
+            x: Math.min(340, 200 + (objCount % 3) * 34),
+            y: 222 + (objCount % 2) * 24,
+            scale: 0.86,
             flip: false,
           };
           activePanel.items.push(newItem);
@@ -758,7 +1119,9 @@
       sidebarBodyEl.querySelectorAll("[data-add-bubble]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const btype = btn.getAttribute("data-add-bubble");
-          const txt = (sbTa.value || "").trim() || (btype === "narrator" ? "Enquanto isso na escola..." : "Vamos checar essa informação!");
+          const txt =
+            (sbTa.value || "").trim() ||
+            (btype === "narrator" ? "Enquanto isso na escola..." : "Vamos checar essa informação!");
           pushUndoSnapshot();
           const bCount = activePanel.items.filter((i) => i.kind === "bubble").length;
           const newItem = {
@@ -769,7 +1132,7 @@
             fontSize: pendingBubbleDraft.fontSize,
             tailDir: pendingBubbleDraft.tailDir,
             x: btype === "narrator" ? 200 : bCount % 2 === 0 ? 190 : 210,
-            y: btype === "narrator" ? 34 : 74 + (bCount % 2) * 44,
+            y: btype === "narrator" ? 32 : 70 + (bCount % 2) * 44,
             scale: 1,
             flip: false,
           };
@@ -783,8 +1146,18 @@
     }
   }
 
+  function bindSidebarModeSwitch() {
+    sidebarBodyEl.querySelectorAll("[data-char-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled) return;
+        charSidebarMode = btn.getAttribute("data-char-mode");
+        renderSidebarBody();
+      });
+    });
+  }
+
   // ---------------------------------------------------------------------------
-  // MODAL TEMAS DA OFICINA
+  // MODAL TEMAS
   // ---------------------------------------------------------------------------
   function renderThemesModal() {
     if (!themesListEl) return;
@@ -959,7 +1332,7 @@
 
   document.addEventListener("keydown", (e) => {
     const tag = (e.target && e.target.tagName) || "";
-    const typing = tag === "INPUT" || tag === "TEXTAREA";
+    const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !typing) {
       e.preventDefault();
       undo();
