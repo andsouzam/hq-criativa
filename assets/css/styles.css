@@ -789,28 +789,47 @@ button {
   box-shadow: 0 0 0 3px rgba(200, 75, 49, 0.25);
 }
 
-.panel-focus-btn {
+.panel-corner-controls {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 6;
-  width: 28px;
-  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panel-corner-btn {
+  width: 26px;
+  height: 26px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background-color: rgba(16, 37, 66, 0.78);
+  background-color: rgba(16, 37, 66, 0.8);
   color: var(--white);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  opacity: 0.85;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.88;
   transition: background-color 140ms var(--ease), opacity 140ms var(--ease);
 }
 
-.panel-focus-btn:hover {
+.panel-corner-btn:hover:not(:disabled) {
   opacity: 1;
   background-color: var(--burnt);
+}
+
+.panel-corner-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.seg-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 #btnFocusMode.is-active {
