@@ -1,0 +1,135 @@
+(function (global) {
+  function slugifyFilename(title) {
+    const clean = String(title || "tirinha-hq-criativa")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return (clean || "tirinha-hq-criativa") + ".png";
+  }
+
+  function buildExportSvgDocument(state) {
+    const panels = state.panels.slice(0, state.panelCount);
+    const count = panels.length;
+    const outerPad = 36;
+    const headerH = 88;
+    const panelW = 400;
+    const panelH = 340;
+    const gutter = 18;
+
+    const totalW = outerPad * 2 + count * panelW + (count - 1) * gutter;
+    const totalH = outerPad * 2 + headerH + panelH;
+
+    const titleText = (state.title || "").trim() || "Minha Tirinha Digital";
+    const authorsText = (state.authors || "").trim();
+    const esc = global.HQArt.escapeXml;
+
+    const clipDefs = panels
+      .map(
+        (_, i) =>
+          `<clipPath id="export-panel-clip-${i}"><rect x="0" y="0" width="${panelW}" height="${panelH}" rx="2"/></clipPath>`
+      )
+      .join("");
+
+    const panelsMarkup = panels
+      .map((panel, i) => {
+        const px = outerPad + i * (panelW + gutter);
+        const py = outerPad + headerH;
+        const inner = global.HQArt.renderPanelInnerSvg(panel);
+        return `
+          <g transform="translate(${px} ${py})">
+            <g clip-path="url(#export-panel-clip-${i})">
+              ${inner}
+            </g>
+            <rect x="0" y="0" width="${panelW}" height="${panelH}" rx="2" fill="none" stroke="#111827" stroke-width="5"/>
+          </g>
+        `;
+      })
+      .join("");
+
+    const authorLine = authorsText
+      ? `<text x="${outerPad}" y="${outerPad + 54}" font-family='"Segoe UI", system-ui, -apple-system, Arial, sans-serif' font-size="18" font-weight="500" fill="#4B5563">Autoria: ${esc(authorsText)}</text>`
+      : `<text x="${outerPad}" y="${outerPad + 54}" font-family='"Segoe UI", system-ui, -apple-system, Arial, sans-serif' font-size="16" font-weight="500" fill="#6B7280">Oficina de Letramento Digital</text>`;
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
+  <defs>${clipDefs}</defs>
+  <rect width="${totalW}" height="${totalH}" fill="#FFFFFF"/>
+  <rect x="${outerPad}" y="${outerPad + 66}" width="${totalW - outerPad * 2}" height="3" rx="1.5" fill="#C84B31"/>
+  <text x="${outerPad}" y="${outerPad + 28}" font-family='"Segoe UI", system-ui, -apple-system, Arial, sans-serif' font-size="30" font-weight="700" fill="#102542">${esc(titleText)}</text>
+  ${authorLine}
+  ${panelsMarkup}
+</svg>`;
+
+    return { svg, totalW, totalH };
+  }
+
+  function svgStringToBase64Url(svgStr) {
+    const bytes = new TextEncoder().encode(svgStr);
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return "data:image/svg+xml;base64," + btoa(bin);
+  }
+
+  function exportStripToPng(state) {
+    return new Promise((resolve, reject) => {
+      const { svg, totalW, totalH } = buildExportSvgDocument(state);
+      const scale = state.panelCount >= 4 ? 1.8 : 2.1;
+      const outW = Math.round(totalW * scale);
+      const outH = Math.round(totalH * scale);
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = outW;
+          canvas.height = outH;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, outW, outH);
+          ctx.drawImage(img, 0, 0, outW, outH);
+
+          const filename = slugifyFilename(state.title);
+          if (canvas.toBlob) {
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error("Falha ao gerar arquivo PNG."));
+                return;
+              }
+              const dlUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = dlUrl;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(dlUrl), 1500);
+              resolve({ filename, width: outW, height: outH });
+            }, "image/png");
+          } else {
+            const dataUrl = canvas.toDataURL("image/png");
+            const a = document.createElement("a");
+            a.href = dataUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            resolve({ filename, width: outW, height: outH });
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => reject(new Error("Não foi possível rasterizar a tirinha SVG."));
+      img.src = svgStringToBase64Url(svg);
+    });
+  }
+
+  global.HQExporter = {
+    buildExportSvgDocument,
+    exportStripToPng,
+  };
+})(window);

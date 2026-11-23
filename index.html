@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#102542">
+  <title>HQ Criativa – Oficina de Letramento Digital</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="9" y1="4" x2="9" y2="20"></line>
+            <line x1="15" y1="4" x2="15" y2="20"></line>
+          </svg>
+        </span>
+        <div>
+          <h1 class="brand-title">HQ Criativa – Oficina de Letramento Digital</h1>
+          <p class="brand-sub">Estúdio rápido de tirinhas sem cadastro · 100% no navegador</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button type="button" id="btnThemeIdeas" class="btn-header-ghost">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path>
+            <path d="M9 18h6"></path>
+            <path d="M10 22h4"></path>
+          </svg>
+          <span>Ideias de Tema</span>
+        </button>
+
+        <button type="button" id="btnUndo" class="btn-header-ghost" disabled title="Desfazer (Ctrl+Z)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7v6h6"></path>
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+          </svg>
+          <span>Desfazer</span>
+        </button>
+
+        <button type="button" id="btnClearPanel" class="btn-header-ghost">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"></path>
+            <path d="M22 21H7"></path>
+            <path d="m5 11 9 9"></path>
+          </svg>
+          <span>Limpar Quadro</span>
+        </button>
+
+        <button type="button" id="btnNewStrip" class="btn-header-ghost">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M12 18v-6"></path>
+            <path d="M9 15h6"></path>
+          </svg>
+          <span>Nova Tirinha</span>
+        </button>
+
+        <button type="button" id="btnDownloadPng" class="btn-download">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Baixar Tirinha (PNG)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="studio-shell">
+    <aside class="sidebar" aria-label="Biblioteca de elementos para a tirinha">
+      <div class="sidebar-tabs" role="tablist">
+        <button type="button" role="tab" class="sidebar-tab is-active" data-sidebar-tab="scenes" aria-selected="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+            <circle cx="9" cy="9" r="2"></circle>
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+          </svg>
+          <span>Cenários</span>
+        </button>
+
+        <button type="button" role="tab" class="sidebar-tab" data-sidebar-tab="characters" aria-selected="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8" r="5"></circle>
+            <path d="M20 21a8 8 0 0 0-16 0"></path>
+          </svg>
+          <span>Personagens</span>
+        </button>
+
+        <button type="button" role="tab" class="sidebar-tab" data-sidebar-tab="objects" aria-selected="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span>Objetos</span>
+        </button>
+
+        <button type="button" role="tab" class="sidebar-tab" data-sidebar-tab="bubbles" aria-selected="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Balões</span>
+        </button>
+      </div>
+
+      <div id="sidebarBody" class="sidebar-body"></div>
+    </aside>
+
+    <section class="stage-workspace" aria-label="Área de montagem da tirinha">
+      <div class="stage-toolbar">
+        <div class="toolbar-group">
+          <span class="toolbar-label">Formato da tira</span>
+          <div class="segmented" role="group" aria-label="Quantidade de quadros">
+            <button type="button" class="seg-btn" data-layout-count="2">2 quadros</button>
+            <button type="button" class="seg-btn is-active" data-layout-count="3">3 quadros</button>
+            <button type="button" class="seg-btn" data-layout-count="4">4 quadros</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">Quadro selecionado</span>
+          <div id="panelJumpTabs" class="panel-pills"></div>
+        </div>
+      </div>
+
+      <div id="elementInspector" class="element-inspector"></div>
+
+      <div class="comic-sheet">
+        <div class="sheet-header">
+          <input id="hqTitleInput" type="text" class="title-input" maxlength="80" placeholder="Título da sua tirinha (ex: Fake News não passa aqui)" aria-label="Título da HQ">
+          <input id="hqAuthorsInput" type="text" class="authors-input" maxlength="80" placeholder="Nome(s) do(s) Autor(es)" aria-label="Nomes dos autores">
+        </div>
+
+        <div id="comicPanels" class="comic-panels" data-count="3"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="themesModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="themesModalTitle">
+      <div class="modal-head">
+        <h2 id="themesModalTitle">Ideias de Tema — Oficina de Letramento Digital</h2>
+        <button type="button" id="btnCloseThemes" class="btn-modal-close">Fechar</button>
+      </div>
+      <div id="themesList" class="themes-grid"></div>
+    </div>
+  </div>
+
+  <div id="statusToast" class="status-toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="assets/js/svg-art.js"></script>
+  <script src="assets/js/themes-data.js"></script>
+  <script src="assets/js/exporter.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
