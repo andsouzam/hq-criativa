@@ -63,6 +63,7 @@
   let drawSize = 2;
   let shapeFillColor = "#7C3AED";
   let shapeStrokeColor = "#111827";
+  let activeSidebarDragPayload = null;
 
   // DOM
   const titleInput = document.getElementById("hqTitleInput");
@@ -536,11 +537,62 @@
       } else {
         attachPanelPointerHandlers(svg, i);
       }
+      attachPanelDropHandlers(card, svg, i);
 
       comicPanelsEl.appendChild(card);
     }
 
     syncSelectionOverlay();
+  }
+
+  function parseSidebarDragPayload(e) {
+    if (e && e.dataTransfer) {
+      const raw =
+        e.dataTransfer.getData("application/json") ||
+        e.dataTransfer.getData("text/plain");
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.kind && parsed.assetId !== undefined) return parsed;
+        } catch (_) {}
+      }
+    }
+    return activeSidebarDragPayload;
+  }
+
+  function attachPanelDropHandlers(card, svg, panelIndex) {
+    card.addEventListener("dragenter", (e) => {
+      if (!parseSidebarDragPayload(e) && !e.dataTransfer) return;
+      e.preventDefault();
+      card.classList.add("is-drop-target");
+    });
+
+    card.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      card.classList.add("is-drop-target");
+    });
+
+    card.addEventListener("dragleave", (e) => {
+      if (!e.relatedTarget || !card.contains(e.relatedTarget)) {
+        card.classList.remove("is-drop-target");
+      }
+    });
+
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.classList.remove("is-drop-target");
+      const payload = parseSidebarDragPayload(e);
+      activeSidebarDragPayload = null;
+      if (!payload || !payload.kind) return;
+
+      const rect = svg.getBoundingClientRect();
+      const rawX = rect.width > 0 ? ((e.clientX - rect.left) / rect.width) * PANEL_W : PANEL_W / 2;
+      const rawY = rect.height > 0 ? ((e.clientY - rect.top) / rect.height) * PANEL_H : PANEL_H / 2;
+      const x = Math.round(Math.min(PANEL_W - 14, Math.max(14, rawX)));
+      const y = Math.round(Math.min(PANEL_H - 14, Math.max(14, rawY)));
+      insertSidebarElement(payload.kind, payload.assetId, panelIndex, { x, y });
+    });
   }
 
   // Cache síncrono em memória para evitar atraso de onload ao alternar Lápis <-> Borracha
@@ -741,10 +793,16 @@
       if (!targetGroup) {
         state.selectedItemId = null;
         if (prevPanel !== panelIndex) persistState();
-        syncSelectionOverlay();
+        if (prevPanel !== panelIndex && isDrawingActive()) {
+          renderPanels();
+        } else {
+          syncSelectionOverlay();
+        }
         renderPanelJumpTabs();
         renderInspector();
-        if (activeSidebarTab === "scenes" || activeSidebarTab === "characters") renderSidebarBody();
+        if (prevPanel !== panelIndex || activeSidebarTab === "scenes" || activeSidebarTab === "characters") {
+          renderSidebarBody();
+        }
         return;
       }
 
@@ -775,7 +833,7 @@
       syncSelectionOverlay();
       renderPanelJumpTabs();
       renderInspector();
-      if (activeSidebarTab === "characters") renderSidebarBody();
+      if (prevPanel !== panelIndex || activeSidebarTab === "characters") renderSidebarBody();
     });
 
     svg.addEventListener("pointermove", (e) => {
@@ -1267,8 +1325,160 @@
   }
 
   // ---------------------------------------------------------------------------
-  // SIDEBAR CATALOGS, EMOJIS, DESENHO & FORMAS
+  // SIDEBAR CATALOGS, EMOJIS, DESENHO, FORMAS & DRAG-AND-DROP PARA OS QUADROS
   // ---------------------------------------------------------------------------
+  function insertSidebarElement(kind, assetId, targetPanelIndex, dropCoords) {
+    const idx =
+      typeof targetPanelIndex === "number" && targetPanelIndex >= 0 && targetPanelIndex < state.panelCount
+        ? targetPanelIndex
+        : Math.min(Math.max(0, state.activePanelIndex), state.panelCount - 1);
+    state.activePanelIndex = idx;
+    const panel = state.panels[idx];
+    if (!panel) return null;
+
+    pushUndoSnapshot();
+    let newItem = null;
+
+    if (kind === "character") {
+      const def = HQArt.CHARACTER_DEFAULTS[assetId] || HQArt.CHARACTER_DEFAULTS.girl;
+      const charCount = panel.items.filter((i) => i.kind === "character").length;
+      const xSlot = charCount === 0 ? 130 : charCount === 1 ? 268 : 200;
+      const isAnim = Boolean(def.isAnimal);
+      newItem = {
+        id: nextId("ch"),
+        kind: "character",
+        assetId,
+        isAnimal: isAnim,
+        expression: pendingExpression,
+        pose: pendingPose,
+        framing: pendingFraming,
+        skinColor: def.skinColor,
+        hairColor: def.hairColor,
+        hairStyle: def.hairStyle,
+        outfitStyle: def.outfitStyle || "casual",
+        bottomStyle: def.bottomStyle || (assetId === "girl" ? "skirt" : "pants"),
+        outfitColor: def.outfitColor,
+        pantsColor: def.pantsColor || "#1E293B",
+        accessories: cloneData(def.defaultAccessories || {}),
+        x: dropCoords ? dropCoords.x : xSlot,
+        y: dropCoords ? dropCoords.y : isAnim ? 270 : 215,
+        scale: isAnim ? 0.9 : 0.85,
+        flip: charCount === 1,
+      };
+    } else if (kind === "emoji") {
+      newItem = {
+        id: nextId("em"),
+        kind: "emoji",
+        emoji: assetId,
+        x: dropCoords ? dropCoords.x : 200,
+        y: dropCoords ? dropCoords.y : 112,
+        scale: 1,
+        flip: false,
+      };
+    } else if (kind === "object") {
+      const meta = HQArt.OBJECT_META && HQArt.OBJECT_META[assetId];
+      const objCount = panel.items.filter((i) => i.kind === "object").length;
+      newItem = {
+        id: nextId("obj"),
+        kind: "object",
+        assetId,
+        x: dropCoords ? dropCoords.x : meta ? 200 : Math.min(340, 200 + (objCount % 3) * 34),
+        y: dropCoords ? dropCoords.y : meta ? meta.defaultY : 222 + (objCount % 2) * 24,
+        scale: meta ? meta.defaultScale : 0.86,
+        flip: false,
+      };
+    } else if (kind === "bubble") {
+      const sbTa = document.getElementById("sidebarBubbleText");
+      const rawText = sbTa ? sbTa.value : pendingBubbleDraft.text;
+      const txt =
+        (rawText || "").trim() ||
+        (assetId === "narrator"
+          ? "Enquanto isso na escola..."
+          : assetId === "whisper"
+          ? "Ei... não espalha sem checar!"
+          : "Vamos checar essa informação!");
+      const bCount = panel.items.filter((i) => i.kind === "bubble").length;
+      newItem = {
+        id: nextId("bub"),
+        kind: "bubble",
+        type: assetId,
+        text: txt,
+        fontSize: pendingBubbleDraft.fontSize,
+        fontFamily: pendingBubbleDraft.fontFamily || "sans",
+        tailDir: pendingBubbleDraft.tailDir,
+        x: dropCoords ? dropCoords.x : assetId === "narrator" ? 200 : bCount % 2 === 0 ? 190 : 210,
+        y: dropCoords ? dropCoords.y : assetId === "narrator" ? 32 : 70 + (bCount % 2) * 44,
+        scale: 1,
+        flip: false,
+      };
+    } else if (kind === "shape") {
+      newItem = {
+        id: nextId("shp"),
+        kind: "shape",
+        assetId,
+        fillColor: shapeFillColor,
+        strokeColor: shapeStrokeColor,
+        color: shapeFillColor === "none" ? shapeStrokeColor : shapeFillColor,
+        x: dropCoords ? dropCoords.x : 200,
+        y: dropCoords ? dropCoords.y : 170,
+        scale: 1,
+        flip: false,
+      };
+      drawTool = "move";
+    }
+
+    if (!newItem) {
+      undoStack.pop();
+      updateUndoButton();
+      return null;
+    }
+
+    panel.items.push(newItem);
+    state.selectedItemId = newItem.id;
+    persistState();
+    renderPanels();
+    renderPanelJumpTabs();
+    renderInspector();
+    if (activeSidebarTab === "characters" || activeSidebarTab === "draw") {
+      renderSidebarBody();
+    }
+    return newItem;
+  }
+
+  if (sidebarBodyEl) {
+    sidebarBodyEl.addEventListener("dragstart", (e) => {
+      const btn = e.target.closest("[data-add-char], [data-add-obj], [data-add-emoji], [data-add-bubble], [data-add-shape]");
+      if (!btn) return;
+      let payload = null;
+      if (btn.hasAttribute("data-add-char")) {
+        payload = { kind: "character", assetId: btn.getAttribute("data-add-char") };
+      } else if (btn.hasAttribute("data-add-obj")) {
+        payload = { kind: "object", assetId: btn.getAttribute("data-add-obj") };
+      } else if (btn.hasAttribute("data-add-emoji")) {
+        payload = { kind: "emoji", assetId: btn.getAttribute("data-add-emoji") };
+      } else if (btn.hasAttribute("data-add-bubble")) {
+        payload = { kind: "bubble", assetId: btn.getAttribute("data-add-bubble") };
+      } else if (btn.hasAttribute("data-add-shape")) {
+        payload = { kind: "shape", assetId: btn.getAttribute("data-add-shape") };
+      }
+      if (!payload) return;
+      activeSidebarDragPayload = payload;
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "copy";
+        const json = JSON.stringify(payload);
+        e.dataTransfer.setData("application/json", json);
+        e.dataTransfer.setData("text/plain", json);
+      }
+    });
+
+    sidebarBodyEl.addEventListener("dragend", () => {
+      activeSidebarDragPayload = null;
+      if (comicPanelsEl) {
+        comicPanelsEl.querySelectorAll(".is-drop-target").forEach((el) => el.classList.remove("is-drop-target"));
+      }
+    });
+  }
+
   function renderSidebarTabs() {
     sidebarTabButtons.forEach((btn) => {
       const tab = btn.getAttribute("data-sidebar-tab");
@@ -1322,10 +1532,11 @@
       });
       sidebarBodyEl.querySelectorAll("[data-pick-scene]").forEach((btn) => {
         btn.addEventListener("click", () => {
+          const currentPanel = getActivePanel();
           const sceneId = btn.getAttribute("data-pick-scene");
-          if (activePanel.sceneId === sceneId) return;
+          if (currentPanel.sceneId === sceneId) return;
           pushUndoSnapshot();
-          activePanel.sceneId = sceneId;
+          currentPanel.sceneId = sceneId;
           persistState();
           renderPanels();
           renderSidebarBody();
@@ -1560,7 +1771,7 @@
                 ${items
                   .map(
                     (ch) => `
-                  <button type="button" class="catalog-card" data-add-char="${ch.id}">
+                  <button type="button" class="catalog-card" draggable="true" data-add-char="${ch.id}">
                     <div class="catalog-thumb char-thumb">${HQArt.buildThumbnailSvg("character", ch.id)}</div>
                     <span class="catalog-name">${ch.name}</span>
                   </button>`
@@ -1616,39 +1827,7 @@
       });
       sidebarBodyEl.querySelectorAll("[data-add-char]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          const charId = btn.getAttribute("data-add-char");
-          const def = HQArt.CHARACTER_DEFAULTS[charId] || HQArt.CHARACTER_DEFAULTS.girl;
-          pushUndoSnapshot();
-          const charCount = activePanel.items.filter((i) => i.kind === "character").length;
-          const xSlot = charCount === 0 ? 130 : charCount === 1 ? 268 : 200;
-          const isAnim = Boolean(def.isAnimal);
-          const newItem = {
-            id: nextId("ch"),
-            kind: "character",
-            assetId: charId,
-            isAnimal: isAnim,
-            expression: pendingExpression,
-            pose: pendingPose,
-            framing: pendingFraming,
-            skinColor: def.skinColor,
-            hairColor: def.hairColor,
-            hairStyle: def.hairStyle,
-            outfitStyle: def.outfitStyle || "casual",
-            bottomStyle: def.bottomStyle || (charId === "girl" ? "skirt" : "pants"),
-            outfitColor: def.outfitColor,
-            pantsColor: def.pantsColor || "#1E293B",
-            accessories: cloneData(def.defaultAccessories || {}),
-            x: xSlot,
-            y: isAnim ? 270 : 215,
-            scale: isAnim ? 0.9 : 0.85,
-            flip: charCount === 1,
-          };
-          activePanel.items.push(newItem);
-          state.selectedItemId = newItem.id;
-          persistState();
-          renderPanels();
-          renderInspector();
-          renderSidebarBody();
+          insertSidebarElement("character", btn.getAttribute("data-add-char"));
         });
       });
       return;
@@ -1661,7 +1840,7 @@
           <div class="emoji-grid">
             ${HQArt.EMOJIS.map(
               (em) =>
-                `<button type="button" class="emoji-card" data-add-emoji="${em.id}" title="${em.name}" aria-label="${em.name}">${em.id}</button>`
+                `<button type="button" class="emoji-card" draggable="true" data-add-emoji="${em.id}" title="${em.name}" aria-label="${em.name}">${em.id}</button>`
             ).join("")}
           </div>
         </div>
@@ -1669,7 +1848,7 @@
         <div class="catalog-grid">
           ${HQArt.OBJECTS.map(
             (obj) => `
-            <button type="button" class="catalog-card" data-add-obj="${obj.id}">
+            <button type="button" class="catalog-card" draggable="true" data-add-obj="${obj.id}">
               <div class="catalog-thumb obj-thumb">${HQArt.buildThumbnailSvg("object", obj.id)}</div>
               <span class="catalog-name">${obj.name}</span>
             </button>`
@@ -1678,44 +1857,12 @@
       `;
       sidebarBodyEl.querySelectorAll("[data-add-emoji]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          const emojiChar = btn.getAttribute("data-add-emoji");
-          pushUndoSnapshot();
-          const newItem = {
-            id: nextId("em"),
-            kind: "emoji",
-            emoji: emojiChar,
-            x: 200,
-            y: 112,
-            scale: 1,
-            flip: false,
-          };
-          activePanel.items.push(newItem);
-          state.selectedItemId = newItem.id;
-          persistState();
-          renderPanels();
-          renderInspector();
+          insertSidebarElement("emoji", btn.getAttribute("data-add-emoji"));
         });
       });
       sidebarBodyEl.querySelectorAll("[data-add-obj]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          const objId = btn.getAttribute("data-add-obj");
-          const meta = HQArt.OBJECT_META && HQArt.OBJECT_META[objId];
-          pushUndoSnapshot();
-          const objCount = activePanel.items.filter((i) => i.kind === "object").length;
-          const newItem = {
-            id: nextId("obj"),
-            kind: "object",
-            assetId: objId,
-            x: meta ? 200 : Math.min(340, 200 + (objCount % 3) * 34),
-            y: meta ? meta.defaultY : 222 + (objCount % 2) * 24,
-            scale: meta ? meta.defaultScale : 0.86,
-            flip: false,
-          };
-          activePanel.items.push(newItem);
-          state.selectedItemId = newItem.id;
-          persistState();
-          renderPanels();
-          renderInspector();
+          insertSidebarElement("object", btn.getAttribute("data-add-obj"));
         });
       });
       return;
@@ -1757,11 +1904,11 @@
             </div>
           </div>
 
-          <span class="sidebar-label">Escolha o estilo para inserir</span>
+          <span class="sidebar-label">Escolha o estilo ou arraste para um quadro</span>
           <div class="catalog-grid">
             ${HQArt.BUBBLE_TYPES.map(
               (bt) => `
-              <button type="button" class="catalog-card" data-add-bubble="${bt.id}">
+              <button type="button" class="catalog-card" draggable="true" data-add-bubble="${bt.id}">
                 <div class="catalog-thumb bubble-thumb">${HQArt.buildThumbnailSvg("bubble", bt.id)}</div>
                 <span class="catalog-name">${bt.name}</span>
               </button>`
@@ -1794,34 +1941,7 @@
       });
       sidebarBodyEl.querySelectorAll("[data-add-bubble]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          const btype = btn.getAttribute("data-add-bubble");
-          const txt =
-            (sbTa.value || "").trim() ||
-            (btype === "narrator"
-              ? "Enquanto isso na escola..."
-              : btype === "whisper"
-              ? "Ei... não espalha sem checar!"
-              : "Vamos checar essa informação!");
-          pushUndoSnapshot();
-          const bCount = activePanel.items.filter((i) => i.kind === "bubble").length;
-          const newItem = {
-            id: nextId("bub"),
-            kind: "bubble",
-            type: btype,
-            text: txt,
-            fontSize: pendingBubbleDraft.fontSize,
-            fontFamily: pendingBubbleDraft.fontFamily || "sans",
-            tailDir: pendingBubbleDraft.tailDir,
-            x: btype === "narrator" ? 200 : bCount % 2 === 0 ? 190 : 210,
-            y: btype === "narrator" ? 32 : 70 + (bCount % 2) * 44,
-            scale: 1,
-            flip: false,
-          };
-          activePanel.items.push(newItem);
-          state.selectedItemId = newItem.id;
-          persistState();
-          renderPanels();
-          renderInspector();
+          insertSidebarElement("bubble", btn.getAttribute("data-add-bubble"));
         });
       });
       return;
@@ -1896,7 +2016,7 @@
             <div class="catalog-grid">
               ${HQArt.SHAPES.map(
                 (sh) => `
-                <button type="button" class="catalog-card" data-add-shape="${sh.id}">
+                <button type="button" class="catalog-card" draggable="true" data-add-shape="${sh.id}">
                   <div class="catalog-thumb obj-thumb">${HQArt.buildThumbnailSvg("shape", sh.id, shapeFillColor, shapeStrokeColor)}</div>
                   <span class="catalog-name">${sh.name}</span>
                 </button>`
@@ -1973,37 +2093,17 @@
 
       sidebarBodyEl.querySelectorAll("[data-add-shape]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          const shapeId = btn.getAttribute("data-add-shape");
-          pushUndoSnapshot();
-          const newItem = {
-            id: nextId("shp"),
-            kind: "shape",
-            assetId: shapeId,
-            fillColor: shapeFillColor,
-            strokeColor: shapeStrokeColor,
-            color: shapeFillColor === "none" ? shapeStrokeColor : shapeFillColor,
-            x: 200,
-            y: 170,
-            scale: 1,
-            flip: false,
-          };
-          activePanel.items.push(newItem);
-          state.selectedItemId = newItem.id;
-          // Alterna para Mover automaticamente para já poder arrastar e redimensionar a forma
-          drawTool = "move";
-          persistState();
-          renderPanels();
-          renderInspector();
-          renderSidebarBody();
+          insertSidebarElement("shape", btn.getAttribute("data-add-shape"));
         });
       });
 
       const btnClearDraw = document.getElementById("btnClearDrawingOnly");
       if (btnClearDraw) {
         btnClearDraw.addEventListener("click", () => {
-          if (!activePanel.drawingDataUrl) return;
+          const currentPanel = getActivePanel();
+          if (!currentPanel.drawingDataUrl) return;
           pushUndoSnapshot();
-          activePanel.drawingDataUrl = null;
+          currentPanel.drawingDataUrl = null;
           liveDrawBufferMap.delete(state.activePanelIndex);
           persistState();
           renderPanels();

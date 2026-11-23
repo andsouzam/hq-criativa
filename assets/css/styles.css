@@ -789,6 +789,29 @@ button {
   box-shadow: 0 0 0 3px rgba(200, 75, 49, 0.25);
 }
 
+.comic-panel-frame.is-drop-target {
+  border-color: var(--navy);
+  box-shadow: 0 0 0 4px rgba(16, 37, 66, 0.28);
+}
+
+.catalog-card[draggable="true"],
+.emoji-card[draggable="true"] {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: element;
+}
+
+.catalog-card[draggable="true"]:active,
+.emoji-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.catalog-card[draggable="true"] svg,
+.catalog-card[draggable="true"] .catalog-thumb,
+.catalog-card[draggable="true"] .catalog-name {
+  pointer-events: none;
+}
+
 .panel-corner-controls {
   position: absolute;
   top: 6px;
